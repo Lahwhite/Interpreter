@@ -13,7 +13,10 @@ public class Main {
         CommonTokenStream tokenStream = new CommonTokenStream(lexer);
         MiniJavaParser parser = new MiniJavaParser(tokenStream);
         ParseTree pt = parser.compilationUnit();
-        new MiniJavaParserBaseVisitor<>().visit(pt);
+        // new MiniJavaParserBaseVisitor<>().visit(pt);
+        Evaluator evaluator = new Evaluator();
+        Object result = evaluator.visit(pt);
+        System.out.println(result);
     }
 
 
