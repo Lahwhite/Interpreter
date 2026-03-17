@@ -6,6 +6,7 @@ import java.util.Map;
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     private final Map<String, Object> variables = new HashMap<>();
 
+    
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
         try {
