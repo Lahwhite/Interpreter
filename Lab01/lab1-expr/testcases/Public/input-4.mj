@@ -1,1 +1,123 @@
-not (true and false) or (false or true)
+4.1 Unary Operation
+Unary + / -
+The operand should be either int or char.
++1 → 1
+-1 → -1
++'a' → 97
+-'a' → -97
+-false → Error
+Logical NOT
+The operand must be of boolean; otherwise，return an error.
+not true → false
+not false → true
+not 42 → Error
+Bitwise NOT
+Operand must be integral (int or char); result is int.
+~0 → -1
+~5 → -6
+~true → Error
+Type Cast
+Java-style cast is supported for integral types:
+Form Operand Result
+(int) expr int, char int
+(char) expr int, char char (signed 8-bit truncation)
+(int) charValue converts char to int using sign extension.
+(char) intValue converts using signed 8-bit truncation semantics.
+(char) 56 → '8'
+(int) 'c' → 99
+(char) 300 → ','
+Increment / Decrement
+++30 → Error
+30-- → Error
+
+
+4.2 Multiplication/Division/Modulo
+Left Oprand Right Oprand Result
+int int int (integer arithmetic)
+int char int (char promoted to int)
+char int int (char promoted to int)
+char char int (both promoted to int)
+Note 1: Integer overflow wraps silently: 2147483647 * 2 = -2.
+Note 2: Any other combination of operand types yields an error.
+Note 3: Division by zero yields an error.
+
+
+4.3 Addition/Subtraction
+The operator + supports integral addition and string concatenation. If either operand is string, + performs
+string concatenation. The operator - does not support string operands.
+Left Oprand Right Oprand Result
+int int int
+int char int (char promoted to int before computation)
+int string string (for + only)
+char int int (char promoted to int before computation)
+char char int (both promoted to int before computation)
+char string string (for + only)
+boolean string string (for + only)
+string string string (for + only)
+string int string (for + only)
+string char string (for + only)
+string boolean string (for + only)
+Note: Any other combination of operand types yields an error.
+"foo" + "bar" → "foobar"
+"foo" + 42 → "foo42"
+1 + "a" → "1a"
+"foo" - "bar" → Error
+'A' + 1 → 66
+'A' + "!" → "A!"
+"A" + true → "Atrue"
+
+
+4.4 Shifting Operation
+Both operands must be integral (int or char).
+Operator Description Example
+<< Signed left shift 1 << 4 = 16
+>> Signed right shift -1 >> 1 = -1
+>>> Unsigned right shift -1 >>> 1 = 2147483647
+1 << 31 → -2147483648 (sign bit set)
+'A' << 1 → 130
+true << 2 → Error (shifts are integral-only)
+
+
+4.5 Relational Operation Except for == and !=
+Only integral types (int, char) support relational operators. Mismatched incompatible types produce
+Error.
+3 < 4 → true
+'A' < 100 → true
+true < 100 → Error
+
+
+4.6 Equality (==, !=)
+Left Right Behavior
+int int compare the values
+int char Promote char→int, compare
+char int Promote char→int, compare
+char char compare the values
+boolean boolean compare the values
+string string compare the strings
+Note: Any other combination of operand types yields an error.
+'A' == 65 → true
+1 == true → Error
+
+
+4.7 Bitwise Operation
+Operands must be integral (int or char) and are evaluated as int.
+Operator Example Result
+& 255 & 15 15
+^ 12 ^ 10 6
+| 10 | 5 15
+~ ~0 -1
+
+
+4.8 Logical Operation
+Both operands must be of boolean and short-circuit evaluation is required:
+and: if left side is false, right side is not evaluated.
+or: if left side is true, right side is not evaluated.
+true and false → false
+1 and true → Error
+
+
+4.9 Ternary
+cond ? thenExpr : elseExpr
+cond must be of boolean; otherwise Error.
+Right-associative: a ? b : c ? d : e → a ? b : (c ? d : e).
+true ? 1 : 2 → 1

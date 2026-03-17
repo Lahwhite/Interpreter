@@ -6,66 +6,98 @@ import java.util.Map;
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     private final Map<String, Object> variables = new HashMap<>();
 
+    static {
+        // Set up global exception handler to ensure System.exit(34) is called on any error
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            System.err.println("Process exits with 34.");
+            System.exit(34);
+        });
+    }
+
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
-        return visit(ctx.expression());
+        try {
+            return visit(ctx.expression());
+        } catch (Exception e) {
+            System.err.println("Process exits with 34.");
+            System.exit(34);
+            return null; // This line is unreachable, but required for compilation
+        }
     }
 
     @Override
     public Object visitPrimary(MiniJavaParser.PrimaryContext ctx) {
-        if (ctx.expression() != null) {
-            return visit(ctx.expression());
+        try {
+            if (ctx.expression() != null) {
+                return visit(ctx.expression());
+            }
+            return visit(ctx.literal());
+        } catch (Exception e) {
+            System.err.println("Process exits with 34.");
+            System.exit(34);
+            return null; // This line is unreachable, but required for compilation
         }
-        return visit(ctx.literal());
     }
 
     @Override
     public Object visitLiteral(MiniJavaParser.LiteralContext ctx) {
-        if (ctx.DECIMAL_LITERAL() != null) {
-            String text = ctx.DECIMAL_LITERAL().getText().replace("_", "");
-            try {
-                return Integer.parseInt(text);
-            } catch (NumberFormatException e) {
-                throw new RuntimeException("Invalid number format: " + text);
+        try {
+            if (ctx.DECIMAL_LITERAL() != null) {
+                String text = ctx.DECIMAL_LITERAL().getText().replace("_", "");
+                try {
+                    return Integer.parseInt(text);
+                } catch (NumberFormatException e) {
+                    throw new RuntimeException("Invalid number format: " + text);
+                }
+            } else if (ctx.BOOL_LITERAL() != null) {
+                return Boolean.parseBoolean(ctx.BOOL_LITERAL().getText());
+            } else if (ctx.CHAR_LITERAL() != null) {
+                return parseCharLiteral(ctx.CHAR_LITERAL().getText());
+            } else if (ctx.STRING_LITERAL() != null) {
+                return parseStringLiteral(ctx.STRING_LITERAL().getText());
             }
-        } else if (ctx.BOOL_LITERAL() != null) {
-            return Boolean.parseBoolean(ctx.BOOL_LITERAL().getText());
-        } else if (ctx.CHAR_LITERAL() != null) {
-            return parseCharLiteral(ctx.CHAR_LITERAL().getText());
-        } else if (ctx.STRING_LITERAL() != null) {
-            return parseStringLiteral(ctx.STRING_LITERAL().getText());
+            throw new RuntimeException("Unknown literal type");
+        } catch (Exception e) {
+            System.err.println("Process exits with 34.");
+            System.exit(34);
+            return null; // This line is unreachable, but required for compilation
         }
-        throw new RuntimeException("Unknown literal type");
     }
 
     @Override
     public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
-        if (ctx.bop != null) {
-            String op = ctx.bop.getText();
-            if (op.equals("?")) {
-                Object condition = visit(ctx.expression(0));
-                return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
-            } else if (op.equals("and") || op.equals("or")) {
-                Object left = visit(ctx.expression(0));
-                return evaluateLogicalOperatorWithShortCircuit(left, ctx.expression(1), op);
-            } else {
-                Object left = visit(ctx.expression(0));
-                Object right = visit(ctx.expression(1));
-                return evaluateBinaryOperator(left, right, op);
+        try {
+            if (ctx.bop != null) {
+                String op = ctx.bop.getText();
+                if (op.equals("?")) {
+                    Object condition = visit(ctx.expression(0));
+                    return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
+                } else if (op.equals("and") || op.equals("or")) {
+                    Object left = visit(ctx.expression(0));
+                    return evaluateLogicalOperatorWithShortCircuit(left, ctx.expression(1), op);
+                } else {
+                    Object left = visit(ctx.expression(0));
+                    Object right = visit(ctx.expression(1));
+                    return evaluateBinaryOperator(left, right, op);
+                }
+            } else if (ctx.prefix != null) {
+                Object operand = visit(ctx.expression(0));
+                String op = ctx.prefix.getText();
+                return evaluateUnaryPrefixOperator(operand, op);
+            } else if (ctx.postfix != null) {
+                Object operand = visit(ctx.expression(0));
+                String op = ctx.postfix.getText();
+                return evaluateUnaryPostfixOperator(operand, op);
+            } else if (ctx.primitiveType() != null) {
+                Object operand = visit(ctx.expression(0));
+                return evaluateTypeCast(operand, ctx.primitiveType());
             }
-        } else if (ctx.prefix != null) {
-            Object operand = visit(ctx.expression(0));
-            String op = ctx.prefix.getText();
-            return evaluateUnaryPrefixOperator(operand, op);
-        } else if (ctx.postfix != null) {
-            Object operand = visit(ctx.expression(0));
-            String op = ctx.postfix.getText();
-            return evaluateUnaryPostfixOperator(operand, op);
-        } else if (ctx.primitiveType() != null) {
-            Object operand = visit(ctx.expression(0));
-            return evaluateTypeCast(operand, ctx.primitiveType());
+            return visitChildren(ctx);
+        } catch (Exception e) {
+            System.err.println("Process exits with 34.");
+            System.exit(34);
+            return null; // This line is unreachable, but required for compilation
         }
-        return visitChildren(ctx);
     }
 
     private boolean isTruthy(Object v) {
@@ -77,19 +109,37 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         return true;
     }
 
+    private int toInt(Object v, String op) {
+        if (v instanceof Integer i) return i;
+        if (v instanceof Character c) return (int) c;
+        throw new RuntimeException("Invalid operand type for " + op + ": " + v.getClass());
+    }
+
     private Object evaluateLogicalOperatorWithShortCircuit(Object left, MiniJavaParser.ExpressionContext rightExpr, String op) {
-        boolean leftTruthy = isTruthy(left);
+        // Check if left operand is boolean type
+        if (!(left instanceof Boolean)) {
+            throw new RuntimeException("Invalid type for " + op + " operator: expected boolean, got " + left.getClass().getName());
+        }
+        
         if (op.equals("and")) {
-            if (!leftTruthy) return false;
+            if (!isTruthy(left)) return false;
             Object right = visit(rightExpr);
+            // Check if right operand is boolean type
+            if (!(right instanceof Boolean)) {
+                throw new RuntimeException("Invalid type for and operator: expected boolean, got " + right.getClass().getName());
+            }
             return isTruthy(right);
-        }
-        if (op.equals("or")) {
-            if (leftTruthy) return true;
+        } else if (op.equals("or")) {
+            if (isTruthy(left)) return true;
             Object right = visit(rightExpr);
+            // Check if right operand is boolean type
+            if (!(right instanceof Boolean)) {
+                throw new RuntimeException("Invalid type for or operator: expected boolean, got " + right.getClass().getName());
+            }
             return isTruthy(right);
+        } else {
+            throw new RuntimeException("Unknown logical operator: " + op);
         }
-        throw new RuntimeException("Unknown logical operator: " + op);
     }
 
     private Object evaluateBinaryOperator(Object left, Object right, String op) {
@@ -98,309 +148,150 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                 case "+":
                     if (left instanceof String || right instanceof String) {
                         return left.toString() + right.toString();
-                    } else if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left + (Integer) right;
-                    } else if (left instanceof Boolean && right instanceof Boolean) {
-                        return left.toString() + right.toString();
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) + ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) + (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left + ((int) (char) right);
+                    } else if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "+") + toInt(right, "+");
                     }
                     throw new RuntimeException("Invalid types for + operator");
                 case "-":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left - (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) - (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left - ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) - ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "-") - toInt(right, "-");
                     }
                     throw new RuntimeException("Invalid types for - operator");
                 case "*":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left * (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) * (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left * ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) * ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "*") * toInt(right, "*");
                     }
-                    throw new RuntimeException("Invalid types for * operator");
+                    throw new RuntimeException("Invalid types for * operator: both operands must be int or char");
                 case "/":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return (Integer) left / (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return ((int) (char) left) / (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return (Integer) left / rightVal;
-                    } else if (left instanceof Character && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return ((int) (char) left) / rightVal;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        int r = toInt(right, "/");
+                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        return toInt(left, "/") / r;
                     }
-                    throw new RuntimeException("Invalid types for / operator");
+                    throw new RuntimeException("Invalid types for / operator: both operands must be int or char");
                 case "%":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return (Integer) left % (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return ((int) (char) left) % (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return (Integer) left % rightVal;
-                    } else if (left instanceof Character && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return ((int) (char) left) % rightVal;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        int r = toInt(right, "%");
+                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        return toInt(left, "%") % r;
                     }
-                    throw new RuntimeException("Invalid types for % operator");
+                    throw new RuntimeException("Invalid types for % operator: both operands must be int or char");
                 case "<":
-                    return compare(left, right) < 0;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return compare(left, right) < 0;
+                    }
+                    throw new RuntimeException("Invalid types for < operator: both operands must be int or char");
                 case ">":
-                    return compare(left, right) > 0;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return compare(left, right) > 0;
+                    }
+                    throw new RuntimeException("Invalid types for > operator: both operands must be int or char");
                 case "<=":
-                    return compare(left, right) <= 0;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return compare(left, right) <= 0;
+                    }
+                    throw new RuntimeException("Invalid types for <= operator: both operands must be int or char");
                 case ">=":
-                    return compare(left, right) >= 0;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return compare(left, right) >= 0;
+                    }
+                    throw new RuntimeException("Invalid types for >= operator: both operands must be int or char");
                 case "==":
                     return areEqual(left, right);
                 case "!=":
                     return !areEqual(left, right);
-                case "and":
-                    if (left instanceof Boolean && right instanceof Boolean) {
-                        return (Boolean) left && (Boolean) right;
-                    } else if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left != 0 && (Integer) right != 0;
-                    } else if (left instanceof String && right instanceof String) {
-                        return !((String) left).isEmpty() && !((String) right).isEmpty();
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return (char) left != 0 && (char) right != 0;
-                    }
-                    throw new RuntimeException("Invalid types for and operator");
-                case "or":
-                    if (left instanceof Boolean && right instanceof Boolean) {
-                        return (Boolean) left || (Boolean) right;
-                    } else if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left != 0 || (Integer) right != 0;
-                    } else if (left instanceof String && right instanceof String) {
-                        return !((String) left).isEmpty() || !((String) right).isEmpty();
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return (char) left != 0 || (char) right != 0;
-                    }
-                    throw new RuntimeException("Invalid types for or operator");
                 case "&":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left & (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) & (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left & ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) & ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "&") & toInt(right, "&");
                     }
-                    throw new RuntimeException("Invalid types for & operator");
+                    throw new RuntimeException("Invalid types for & operator: both operands must be int or char");
                 case "|":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left | (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) | (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left | ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) | ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "|") | toInt(right, "|");
                     }
-                    throw new RuntimeException("Invalid types for | operator");
+                    throw new RuntimeException("Invalid types for | operator: both operands must be int or char");
                 case "^":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left ^ (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) ^ (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left ^ ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) ^ ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "^") ^ toInt(right, "^");
                     }
-                    throw new RuntimeException("Invalid types for ^ operator");
+                    throw new RuntimeException("Invalid types for ^ operator: both operands must be int or char");
                 case "<<":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left << (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) << (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left << ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) << ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "<<") << toInt(right, "<<");
                     }
                     throw new RuntimeException("Invalid types for << operator");
                 case ">>":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left >> (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) >> (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left >> ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) >> ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, ">>") >> toInt(right, ">>");
                     }
                     throw new RuntimeException("Invalid types for >> operator");
                 case ">>>":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left >>> (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) >>> (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left >>> ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) >>> ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, ">>>") >>> toInt(right, ">>>");
                     }
                     throw new RuntimeException("Invalid types for >>> operator");
                 case "=":
                     return right;
                 case "+=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left + (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) + (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left + ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) + ((int) (char) right);
-                    } else if (left instanceof String || right instanceof String) {
+                    if (left instanceof String || right instanceof String) {
                         return left.toString() + right.toString();
+                    }
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "+=") + toInt(right, "+=");
                     }
                     throw new RuntimeException("Invalid types for += operator");
                 case "-=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left - (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) - (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left - ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) - ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "-=") - toInt(right, "-=");
                     }
                     throw new RuntimeException("Invalid types for -= operator");
                 case "*=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left * (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) * (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left * ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) * ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "*=") * toInt(right, "*=");
                     }
                     throw new RuntimeException("Invalid types for *= operator");
                 case "/=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return (Integer) left / (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return ((int) (char) left) / (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return (Integer) left / rightVal;
-                    } else if (left instanceof Character && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return ((int) (char) left) / rightVal;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        int r = toInt(right, "/=");
+                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        return toInt(left, "/=") / r;
                     }
                     throw new RuntimeException("Invalid types for /= operator");
                 case "%=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return (Integer) left % (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        if ((Integer) right == 0) return 0;
-                        return ((int) (char) left) % (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return (Integer) left % rightVal;
-                    } else if (left instanceof Character && right instanceof Character) {
-                        int rightVal = (int) (char) right;
-                        if (rightVal == 0) return 0;
-                        return ((int) (char) left) % rightVal;
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        int r = toInt(right, "%=");
+                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        return toInt(left, "%=") % r;
                     }
                     throw new RuntimeException("Invalid types for %= operator");
                 case "&=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left & (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) & (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left & ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) & ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "&=") & toInt(right, "&=");
                     }
                     throw new RuntimeException("Invalid types for &= operator");
                 case "|=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left | (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) | (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left | ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) | ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "|=") | toInt(right, "|=");
                     }
                     throw new RuntimeException("Invalid types for |= operator");
                 case "^=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left ^ (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) ^ (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left ^ ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) ^ ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "^=") ^ toInt(right, "^=");
                     }
                     throw new RuntimeException("Invalid types for ^= operator");
                 case "<<=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left << (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) << (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left << ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) << ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, "<<=") << toInt(right, "<<=");
                     }
                     throw new RuntimeException("Invalid types for <<= operator");
                 case ">>=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left >> (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) >> (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left >> ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) >> ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, ">>=") >> toInt(right, ">>=");
                     }
                     throw new RuntimeException("Invalid types for >>= operator");
                 case ">>>=":
-                    if (left instanceof Integer && right instanceof Integer) {
-                        return (Integer) left >>> (Integer) right;
-                    } else if (left instanceof Character && right instanceof Integer) {
-                        return ((int) (char) left) >>> (Integer) right;
-                    } else if (left instanceof Integer && right instanceof Character) {
-                        return (Integer) left >>> ((int) (char) right);
-                    } else if (left instanceof Character && right instanceof Character) {
-                        return ((int) (char) left) >>> ((int) (char) right);
+                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return toInt(left, ">>>=") >>> toInt(right, ">>>=");
                     }
                     throw new RuntimeException("Invalid types for >>>= operator");
                 default:
@@ -415,46 +306,23 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         try {
             switch (op) {
                 case "+":
-                    return operand;
+                    if (operand instanceof Integer || operand instanceof Character) return toInt(operand, "+");
+                    throw new RuntimeException("Invalid type for + operator");
                 case "-":
-                    if (operand instanceof Integer) {
-                        return -(Integer) operand;
-                    } else if (operand instanceof Character) {
-                        return -((int) (char) operand);
-                    }
+                    if (operand instanceof Integer || operand instanceof Character) return -toInt(operand, "-");
                     throw new RuntimeException("Invalid type for - operator");
                 case "not":
-                    if (operand instanceof Boolean) {
-                        return !(Boolean) operand;
-                    } else if (operand instanceof Integer) {
-                        return (Integer) operand == 0;
-                    } else if (operand instanceof String) {
-                        return ((String) operand).isEmpty();
-                    } else if (operand instanceof Character) {
-                        return (char) operand == 0;
-                    }
-                    throw new RuntimeException("Invalid type for not operator");
+                    if (operand instanceof Boolean) return !((Boolean) operand);
+                    throw new RuntimeException("Invalid type for not operator: expected boolean, got " + operand.getClass().getName());
                 case "~":
-                    if (operand instanceof Integer) {
-                        return ~(Integer) operand;
-                    } else if (operand instanceof Character) {
-                        return ~((int) (char) operand);
-                    }
+                    if (operand instanceof Integer || operand instanceof Character) return ~toInt(operand, "~");
                     throw new RuntimeException("Invalid type for ~ operator");
                 case "++":
-                    if (operand instanceof Integer) {
-                        return (Integer) operand + 1;
-                    } else if (operand instanceof Character) {
-                        return (char) (((int) (char) operand) + 1);
-                    }
-                    throw new RuntimeException("Invalid type for ++ operator");
+                    // ++ operator can only be applied to variables, not literals
+                    throw new RuntimeException("Invalid use of ++ operator: can only be applied to variables");
                 case "--":
-                    if (operand instanceof Integer) {
-                        return (Integer) operand - 1;
-                    } else if (operand instanceof Character) {
-                        return (char) (((int) (char) operand) - 1);
-                    }
-                    throw new RuntimeException("Invalid type for -- operator");
+                    // -- operator can only be applied to variables, not literals
+                    throw new RuntimeException("Invalid use of -- operator: can only be applied to variables");
                 default:
                     throw new RuntimeException("Unknown unary prefix operator: " + op);
             }
@@ -467,19 +335,11 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         try {
             switch (op) {
                 case "++":
-                    if (operand instanceof Integer) {
-                        return (Integer) operand + 1;
-                    } else if (operand instanceof Character) {
-                        return (char) (((int) (char) operand) + 1);
-                    }
-                    throw new RuntimeException("Invalid type for ++ operator");
+                    // ++ operator can only be applied to variables, not literals
+                    throw new RuntimeException("Invalid use of ++ operator: can only be applied to variables");
                 case "--":
-                    if (operand instanceof Integer) {
-                        return (Integer) operand - 1;
-                    } else if (operand instanceof Character) {
-                        return (char) (((int) (char) operand) - 1);
-                    }
-                    throw new RuntimeException("Invalid type for -- operator");
+                    // -- operator can only be applied to variables, not literals
+                    throw new RuntimeException("Invalid use of -- operator: can only be applied to variables");
                 default:
                     throw new RuntimeException("Unknown unary postfix operator: " + op);
             }
@@ -490,60 +350,17 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
 
     private Object evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
         try {
-            if (type.BOOLEAN() != null) {
-                if (operand instanceof Integer) {
-                    return ((Integer) operand) != 0;
-                } else if (operand instanceof String) {
-                    String s = (String) operand;
-                    if (s.equalsIgnoreCase("true")) {
-                        return true;
-                    } else if (s.equalsIgnoreCase("false")) {
-                        return false;
-                    } else {
-                        try {
-                            return Integer.parseInt(s) != 0;
-                        } catch (NumberFormatException e) {
-                            return !s.isEmpty();
-                        }
-                    }
-                } else if (operand instanceof Character) {
-                    return ((int) (char) operand) != 0;
-                } else if (operand instanceof Boolean) {
-                    return operand;
-                }
-                throw new RuntimeException("Cannot cast " + operand.getClass() + " to boolean");
-            } else if (type.CHAR() != null) {
-                if (operand instanceof Integer) {
-                    int value = (Integer) operand;
-                    if (value >= 0 && value <= 65535) {
-                        return (char) value;
-                    } else {
-                        throw new RuntimeException("Integer value out of char range: " + value);
-                    }
-                } else if (operand instanceof String) {
-                    String s = (String) operand;
-                    return s.length() > 0 ? s.charAt(0) : '\0';
-                } else if (operand instanceof Boolean) {
-                    return ((Boolean) operand) ? 't' : 'f';
-                } else if (operand instanceof Character) {
-                    return operand;
-                }
-                throw new RuntimeException("Cannot cast " + operand.getClass() + " to char");
-            } else if (type.INT() != null) {
-                if (operand instanceof Boolean) {
-                    return ((Boolean) operand) ? 1 : 0;
-                } else if (operand instanceof String) {
-                    try {
-                        return Integer.parseInt((String) operand);
-                    } catch (NumberFormatException e) {
-                        throw new RuntimeException("Cannot parse string to int: " + operand);
-                    }
-                } else if (operand instanceof Character) {
-                    return (int) (char) operand;
-                } else if (operand instanceof Integer) {
-                    return operand;
-                }
+            if (type.INT() != null) {
+                if (operand instanceof Integer) return operand;
+                if (operand instanceof Character c) return (int) c; // Sign extension
                 throw new RuntimeException("Cannot cast " + operand.getClass() + " to int");
+            } else if (type.CHAR() != null) {
+                if (operand instanceof Character) return operand;
+                if (operand instanceof Integer i) return (char) (i & 0xFF); // Signed 8-bit truncation
+                throw new RuntimeException("Cannot cast " + operand.getClass() + " to char");
+            } else if (type.BOOLEAN() != null) {
+                if (operand instanceof Boolean) return operand;
+                throw new RuntimeException("Cannot cast " + operand.getClass() + " to boolean");
             } else if (type.STRING() != null) {
                 return operand.toString();
             }
@@ -558,8 +375,10 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
 
     private Object evaluateTernaryOperator(Object condition, MiniJavaParser.ExpressionContext thenExpr, MiniJavaParser.ExpressionContext elseExpr) {
         try {
-            boolean takeThen = isTruthy(condition);
-            return takeThen ? visit(thenExpr) : visit(elseExpr);
+            if (!(condition instanceof Boolean)) {
+                throw new RuntimeException("Ternary operator error: condition must be boolean");
+            }
+            return ((Boolean) condition) ? visit(thenExpr) : visit(elseExpr);
         } catch (Exception e) {
             throw new RuntimeException("Ternary operator error: " + e.getMessage());
         }
@@ -568,6 +387,14 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     private boolean areEqual(Object left, Object right) {
         if (left == right) return true;
         if (left == null || right == null) return false;
+
+        // Check if types are the same
+        if (left.getClass() != right.getClass()) {
+            // Allow int <-> char comparison
+            if (!((left instanceof Integer && right instanceof Character) || (left instanceof Character && right instanceof Integer))) {
+                throw new RuntimeException("Type mismatch: cannot compare " + left.getClass().getName() + " and " + right.getClass().getName());
+            }
+        }
 
         // int <-> char numeric comparison
         if (left instanceof Integer li && right instanceof Character rc) {
@@ -580,25 +407,31 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         if (left instanceof Character lc2 && right instanceof Character rc2) {
             return lc2.charValue() == rc2.charValue();
         }
-        return left.equals(right);
+        // int <-> int
+        if (left instanceof Integer && right instanceof Integer) {
+            return left.equals(right);
+        }
+        // String <-> String
+        if (left instanceof String && right instanceof String) {
+            return left.equals(right);
+        }
+        // Boolean <-> Boolean
+        if (left instanceof Boolean && right instanceof Boolean) {
+            return left.equals(right);
+        }
+        
+        // Any other type combination is invalid
+        throw new RuntimeException("Type mismatch: cannot compare " + left.getClass().getName() + " and " + right.getClass().getName());
     }
 
     private int compare(Object left, Object right) {
         try {
-            if (left instanceof Integer && right instanceof Integer) {
-                return ((Integer) left).compareTo((Integer) right);
-            } else if (left instanceof Boolean && right instanceof Boolean) {
-                return ((Boolean) left).compareTo((Boolean) right);
+            if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                return Integer.compare(toInt(left, "compare"), toInt(right, "compare"));
             } else if (left instanceof String && right instanceof String) {
                 return ((String) left).compareTo((String) right);
-            } else if (left instanceof Character && right instanceof Character) {
-                return ((Character) left).compareTo((Character) right);
-            } else if (left instanceof Integer && right instanceof Character) {
-                return ((Integer) left).compareTo((int) (char) right);
-            } else if (left instanceof Character && right instanceof Integer) {
-                return ((Integer) ((int) (char) left)).compareTo((Integer) right);
-            } else if (left instanceof Number && right instanceof Number) {
-                return ((Integer) (((Number) left).intValue())).compareTo(((Number) right).intValue());
+            } else if (left instanceof Boolean && right instanceof Boolean) {
+                return Boolean.compare((Boolean) left, (Boolean) right);
             }
             throw new RuntimeException("Cannot compare " + left.getClass() + " and " + right.getClass());
         } catch (Exception e) {
