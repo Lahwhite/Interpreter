@@ -1,4 +1,5 @@
 outer_folder/
+run_tests*
 
 # Compiled class file
 *.class
