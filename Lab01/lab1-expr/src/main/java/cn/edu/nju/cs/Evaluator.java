@@ -1,10 +1,10 @@
 package cn.edu.nju.cs;
 
-import java.util.HashMap;
-import java.util.Map;
+// import java.util.HashMap;
+// import java.util.Map;
 
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
-    private final Map<String, Object> variables = new HashMap<>();
+    // private final Map<String, Object> variables = new HashMap<>();
 
     
     @Override
@@ -61,27 +61,35 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
         try {
             if (ctx.bop != null) {
+                // 二元运算符
                 String op = ctx.bop.getText();
                 if (op.equals("?")) {
+                    // 三目运算符
                     Object condition = visit(ctx.expression(0));
                     return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
                 } else if (op.equals("and") || op.equals("or")) {
+                    // 逻辑运算符
                     Object left = visit(ctx.expression(0));
                     return evaluateLogicalOperatorWithShortCircuit(left, ctx.expression(1), op);
                 } else {
+                    // 二元运算符
                     Object left = visit(ctx.expression(0));
                     Object right = visit(ctx.expression(1));
                     return evaluateBinaryOperator(left, right, op);
                 }
             } else if (ctx.prefix != null) {
+                // 前缀运算符
                 Object operand = visit(ctx.expression(0));
                 String op = ctx.prefix.getText();
                 return evaluateUnaryPrefixOperator(operand, op);
             } else if (ctx.postfix != null) {
+                // 后缀运算符
                 Object operand = visit(ctx.expression(0));
                 String op = ctx.postfix.getText();
                 return evaluateUnaryPostfixOperator(operand, op);
             } else if (ctx.primitiveType() != null) {
+                // 类型转换
+                String type = ctx.primitiveType().getText();
                 Object operand = visit(ctx.expression(0));
                 return evaluateTypeCast(operand, ctx.primitiveType());
             }
@@ -366,6 +374,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
     }
 
+    // 三目运算符
     private Object evaluateTernaryOperator(Object condition, MiniJavaParser.ExpressionContext thenExpr, MiniJavaParser.ExpressionContext elseExpr) {
         try {
             if (!(condition instanceof Boolean)) {

@@ -8,11 +8,17 @@ import java.io.File;
 
 public class Main {
     public static void run(File mjFile) throws Exception {
+        // 读取文件内容
         var input = CharStreams.fromFileName(mjFile.getAbsolutePath());
+        // 词法分析
         MiniJavaLexer lexer = new MiniJavaLexer(input);
         CommonTokenStream tokenStream = new CommonTokenStream(lexer);
+        // 语法分析
         MiniJavaParser parser = new MiniJavaParser(tokenStream);
+        // 解析编译单元
         ParseTree pt = parser.compilationUnit();
+
+        // CODE
         // new MiniJavaParserBaseVisitor<>().visit(pt);
         Evaluator evaluator = new Evaluator();
         Object result = evaluator.visit(pt);
