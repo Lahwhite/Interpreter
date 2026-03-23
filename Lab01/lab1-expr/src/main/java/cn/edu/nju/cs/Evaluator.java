@@ -3,21 +3,21 @@ package cn.edu.nju.cs;
 import java.util.HashMap;
 import java.util.Map;
 
-public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
-    private final Map<String, MiniJavaObject> symbolTable = new HashMap<>();
+public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
+    private final Map<String, Object> symbolTable = new HashMap<>();
 
     
     // 检查过
     @Override
-    public MiniJavaObject visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
+    public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
         var result = visit(ctx.expression());
-        System.out.println(result.getValue());
+        // System.out.println(result);
         return result;
     }
 
     // 检查过
     @Override
-    public MiniJavaObject visitPrimary(MiniJavaParser.PrimaryContext ctx) {
+    public Object visitPrimary(MiniJavaParser.PrimaryContext ctx) {
         if (ctx.expression() != null) {
             return visit(ctx.expression());
         }
@@ -26,29 +26,28 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
 
     // 检查过
     @Override
-    public MiniJavaObject visitLiteral(MiniJavaParser.LiteralContext ctx) {
+    public Object visitLiteral(MiniJavaParser.LiteralContext ctx) {
         if (ctx.DECIMAL_LITERAL() != null) {
-            return new MiniJavaObject("int", Integer.parseInt(ctx.DECIMAL_LITERAL().getText().replace("_", "")));
+            return Integer.parseInt(ctx.DECIMAL_LITERAL().getText().replace("_", ""));
         } else if (ctx.BOOL_LITERAL() != null) {
-            return new MiniJavaObject("boolean", "true".equals(ctx.getText()));
+            return "true".equals(ctx.getText());
         } else if (ctx.CHAR_LITERAL() != null) {
-            return new MiniJavaObject("char", ctx.CHAR_LITERAL().getText().charAt(1));
+            return ctx.CHAR_LITERAL().getText().charAt(1);
         } else if (ctx.STRING_LITERAL() != null) {
             String lit = ctx.getText();
-            return new MiniJavaObject("string", lit.substring(1, lit.length() - 1));
+            return lit.substring(1, lit.length() - 1);
         }
         return null;
     }
 
     // 检查过
     @Override
-    public MiniJavaObject visitExpression(MiniJavaParser.ExpressionContext ctx) {
+    public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
         try {
             if (ctx.bop != null) {
                 // 运算符
                 String op = ctx.bop.getText();
                 if (ctx.bop.getType() == MiniJavaParser.QUESTION) {
-                    // 三目运算符
                     Object condition = visit(ctx.expression(0));
                     return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
                 } else if (op.equals("and") || op.equals("or")) {
@@ -87,7 +86,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
 
     // 检查过
     @Override
-    public MiniJavaObject visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
+    public Object visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
         String type = ctx.getText();
         Object value = "";
         if (type.equals("int") || type.equals("char")) {
@@ -95,7 +94,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
         } else if (type.equals("boolean")) {
             value = false;
         } 
-        return new MiniJavaObject(type, value);
+        return value;
     }
 
     private boolean isTruthy(Object v) {
@@ -111,184 +110,181 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
     }
 
     // 逻辑运算符，检查过
-    private MiniJavaObject evaluateLogicalOperatorWithShortCircuit(Object left, MiniJavaParser.ExpressionContext rightExpr, String op) {
-        // Check if left operand is boolean type
+    private Object evaluateLogicalOperatorWithShortCircuit(Object left, MiniJavaParser.ExpressionContext rightExpr, String op) {
         if (!(left instanceof Boolean)) {
             throw new RuntimeException("Invalid type for " + op + " operator: expected boolean, got " + left.getClass().getName());
         }
         
         if (op.equals("and")) {
-            if (!isTruthy(left)) return new MiniJavaObject("boolean", false);
+            if (!isTruthy(left)) return false;
             Object right = visit(rightExpr);
-            // Check if right operand is boolean type
             if (!(right instanceof Boolean)) {
                 throw new RuntimeException("Invalid type for and operator: expected boolean, got " + right.getClass().getName());
             }
-            return new MiniJavaObject("boolean", isTruthy(right));
+            return isTruthy(right);
         } else if (op.equals("or")) {
-            if (isTruthy(left)) return new MiniJavaObject("boolean", true);
+            if (isTruthy(left)) return true;
             Object right = visit(rightExpr);
-            // Check if right operand is boolean type
             if (!(right instanceof Boolean)) {
                 throw new RuntimeException("Invalid type for or operator: expected boolean, got " + right.getClass().getName());
             }
-            return new MiniJavaObject("boolean", isTruthy(right));
+            return isTruthy(right);
         } else {
             throw new RuntimeException("Unknown logical operator: " + op);
         }
     }
 
     // 二元运算符，检查过
-    private MiniJavaObject evaluateBinaryOperator(Object left, Object right, String op) {
+    private Object evaluateBinaryOperator(Object left, Object right, String op) {
         try {
             switch (op) {
                 case "+":
                     if (left instanceof String || right instanceof String) {
-                        return new MiniJavaObject("string", left.toString() + right.toString());
+                        return left.toString() + right.toString();
                     } else if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "+") + toInt(right, "+"));
+                        return toInt(left, "+") + toInt(right, "+");
                     }
                     throw new RuntimeException("Invalid types for + operator");
                 case "-":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "-") - toInt(right, "-"));
+                        return toInt(left, "-") - toInt(right, "-");
                     }
                     throw new RuntimeException("Invalid types for - operator");
                 case "*":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "*") * toInt(right, "*"));
+                        return toInt(left, "*") * toInt(right, "*");
                     }
                     throw new RuntimeException("Invalid types for * operator: both operands must be int or char");
                 case "/":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
                         int r = toInt(right, "/");
                         if (r == 0) throw new ArithmeticException("Division by zero");
-                        return new MiniJavaObject("int", toInt(left, "/") / r);
+                        return toInt(left, "/") / r;
                     }
                     throw new RuntimeException("Invalid types for / operator: both operands must be int or char");
                 case "%":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
                         int r = toInt(right, "%");
                         if (r == 0) throw new ArithmeticException("Division by zero");
-                        return new MiniJavaObject("int", toInt(left, "%") % r);
+                        return toInt(left, "%") % r;
                     }
                     throw new RuntimeException("Invalid types for % operator: both operands must be int or char");
                 case "<":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("boolean", compare(left, right) < 0);
+                        return compare(left, right) < 0;
                     }
                     throw new RuntimeException("Invalid types for < operator: both operands must be int or char");
                 case ">":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("boolean", compare(left, right) > 0);
+                        return compare(left, right) > 0;
                     }
                     throw new RuntimeException("Invalid types for > operator: both operands must be int or char");
                 case "<=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("boolean", compare(left, right) <= 0);
+                        return compare(left, right) <= 0;
                     }
                     throw new RuntimeException("Invalid types for <= operator: both operands must be int or char");
                 case ">=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("boolean", compare(left, right) >= 0);
+                        return compare(left, right) >= 0;
                     }
                     throw new RuntimeException("Invalid types for >= operator: both operands must be int or char");
                 case "==":
-                    return new MiniJavaObject("boolean", areEqual(left, right));
+                    return areEqual(left, right);
                 case "!=":
-                    return new MiniJavaObject("boolean", !areEqual(left, right));
+                    return !areEqual(left, right);
                 case "&":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "&") & toInt(right, "&"));
+                        return toInt(left, "&") & toInt(right, "&");
                     }
                     throw new RuntimeException("Invalid types for & operator: both operands must be int or char");
                 case "|":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "|") | toInt(right, "|"));
+                        return toInt(left, "|") | toInt(right, "|");
                     }
                     throw new RuntimeException("Invalid types for | operator: both operands must be int or char");
                 case "^":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "^") ^ toInt(right, "^"));
+                        return toInt(left, "^") ^ toInt(right, "^");
                     }
                     throw new RuntimeException("Invalid types for ^ operator: both operands must be int or char");
                 case "<<":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "<<") << toInt(right, "<<"));
+                        return toInt(left, "<<") << toInt(right, "<<");
                     }
                     throw new RuntimeException("Invalid types for << operator");
                 case ">>":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, ">>") >> toInt(right, ">>"));
+                        return toInt(left, ">>") >> toInt(right, ">>");
                     }
                     throw new RuntimeException("Invalid types for >> operator");
                 case ">>>":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, ">>>") >>> toInt(right, ">>>"));
+                        return toInt(left, ">>>") >>> toInt(right, ">>>");
                     }
                     throw new RuntimeException("Invalid types for >>> operator");
                 case "=":
-                    return new MiniJavaObject("int", toInt(right, "="));
+                    return toInt(right, "=");
                 case "+=":
                     if (left instanceof String || right instanceof String) {
-                        return new MiniJavaObject("string", left.toString() + right.toString());
+                        return left.toString() + right.toString();
                     }
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "+=") + toInt(right, "+="));
+                        return toInt(left, "+=") + toInt(right, "+=");
                     }
                     throw new RuntimeException("Invalid types for += operator");
                 case "-=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "-=") - toInt(right, "-="));
+                        return toInt(left, "-=") - toInt(right, "-=");
                     }
                     throw new RuntimeException("Invalid types for -= operator");
                 case "*=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "*=") * toInt(right, "*="));
+                        return toInt(left, "*=") * toInt(right, "*=");
                     }
                     throw new RuntimeException("Invalid types for *= operator");
                 case "/=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
                         int r = toInt(right, "/=");
                         if (r == 0) throw new ArithmeticException("Division by zero");
-                        return new MiniJavaObject("int", toInt(left, "/=") / r);
+                        return toInt(left, "/=") / r;
                     }
                     throw new RuntimeException("Invalid types for /= operator");
                 case "%=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
                         int r = toInt(right, "%=");
                         if (r == 0) throw new ArithmeticException("Division by zero");
-                        return new MiniJavaObject("int", toInt(left, "%=") % r);
+                        return toInt(left, "%=") % r;
                     }
                     throw new RuntimeException("Invalid types for %= operator");
                 case "&=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "&=") & toInt(right, "&="));
+                        return toInt(left, "&=") & toInt(right, "&=");
                     }
                     throw new RuntimeException("Invalid types for &= operator");
                 case "|=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "|=") | toInt(right, "|="));
+                        return toInt(left, "|=") | toInt(right, "|=");
                     }
                     throw new RuntimeException("Invalid types for |= operator");
                 case "^=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "^=") ^ toInt(right, "^="));
+                        return toInt(left, "^=") ^ toInt(right, "^=");
                     }
                     throw new RuntimeException("Invalid types for ^= operator");
                 case "<<=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, "<<=") << toInt(right, "<<="));
+                        return toInt(left, "<<=") << toInt(right, "<<=");
                     }
                     throw new RuntimeException("Invalid types for <<= operator");
                 case ">>=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, ">>=") >> toInt(right, ">>="));
+                        return toInt(left, ">>=") >> toInt(right, ">>=");
                     }
                     throw new RuntimeException("Invalid types for >>= operator");
                 case ">>>=":
                     if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                        return new MiniJavaObject("int", toInt(left, ">>>=") >>> toInt(right, ">>>="));
+                        return toInt(left, ">>>=") >>> toInt(right, ">>>=");
                     }
                     throw new RuntimeException("Invalid types for >>>= operator");
                 default:
@@ -300,23 +296,23 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
     }
 
     // 前缀运算符，检查过
-    private MiniJavaObject evaluateUnaryPrefixOperator(Object operand, String op) {
+    private Object evaluateUnaryPrefixOperator(Object operand, String op) {
         switch (op) {
             case "+":
                 if (operand instanceof Integer || operand instanceof Character) 
-                    return new MiniJavaObject("int", toInt(operand, "+"));
+                    return toInt(operand, "+");
                 throw new RuntimeException("Invalid type for + operator");
             case "-":
                 if (operand instanceof Integer || operand instanceof Character) 
-                    return new MiniJavaObject("int", -toInt(operand, "-"));
+                    return -toInt(operand, "-");
                 throw new RuntimeException("Invalid type for - operator");
             case "not":
                 if (operand instanceof Boolean) 
-                    return new MiniJavaObject("boolean", !((Boolean) operand));
+                    return !((Boolean) operand);
                 throw new RuntimeException("Invalid type for not operator: expected boolean, got " + operand.getClass().getName());
             case "~":
                 if (operand instanceof Integer || operand instanceof Character) 
-                    return new MiniJavaObject("int", ~toInt(operand, "~"));
+                    return ~toInt(operand, "~");
                 throw new RuntimeException("Invalid type for ~ operator");
             case "++":
                 // ++ operator can only be applied to variables, not literals
@@ -330,7 +326,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
     }
 
     // 后缀运算符，检查过
-    private MiniJavaObject evaluateUnaryPostfixOperator(Object operand, String op) {
+    private Object evaluateUnaryPostfixOperator(Object operand, String op) {
         switch (op) {
             case "++":
                 // ++ operator can only be applied to variables, not literals
@@ -344,25 +340,23 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
     }
 
     // 类型转换，检查过
-    private MiniJavaObject evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
+    private Object evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
         if (type.INT() != null) {
             if (operand instanceof Character c) {
-                int value = (int) c;    // 符号扩展：将 char 视为有符号 16 位值
-                // 如果 char 的最高位为 1，则进行符号扩展
+                int value = (int) c;
                 if ((c & 0x8000) != 0) {
-                    value |= 0xFFFF0000; // 符号扩展
+                    value |= 0xFFFF0000;
                 }
-                return new MiniJavaObject("int", value);
+                return value;
             }
             throw new RuntimeException("Cannot cast " + operand.getClass() + " to int");
         } else if (type.CHAR() != null) {
             if (operand instanceof Integer i) {
-                int truncated = i & 0xFF;   // 有符号 8 位截断：保留低 8 位，并视为有符号值
-                // 如果第 8 位为 1，则视为负数
+                int truncated = i & 0xFF;
                 if ((truncated & 0x80) != 0) {
-                    truncated |= 0xFFFFFF00; // 符号扩展到 32 位
+                    truncated |= 0xFFFFFF00;
                 }
-                return new MiniJavaObject("char", (char) truncated);
+                return (char) truncated;
             }
             throw new RuntimeException("Cannot cast " + operand.getClass() + " to char");
         }
@@ -371,12 +365,12 @@ public class Evaluator extends MiniJavaParserBaseVisitor<MiniJavaObject> {
     }
 
     // 三目运算符，检查过
-    private MiniJavaObject evaluateTernaryOperator(Object condition, MiniJavaParser.ExpressionContext thenExpr, MiniJavaParser.ExpressionContext elseExpr) {
+    private Object evaluateTernaryOperator(Object condition, MiniJavaParser.ExpressionContext thenExpr, MiniJavaParser.ExpressionContext elseExpr) {
         try {
             if (!(condition instanceof Boolean)) {
                 throw new RuntimeException("Ternary operator error: condition must be boolean");
             }
-            return new MiniJavaObject("boolean", ((Boolean) condition) ? visit(thenExpr) : visit(elseExpr));
+            return (Boolean) condition ? visit(thenExpr) : visit(elseExpr);
         } catch (Exception e) {
             throw new RuntimeException("Ternary operator error: " + e.getMessage());
         }
