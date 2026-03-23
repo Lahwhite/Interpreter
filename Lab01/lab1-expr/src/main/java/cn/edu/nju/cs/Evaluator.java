@@ -78,7 +78,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             }
             return visitChildren(ctx);
         } catch (Exception e) {
-            System.err.println("Process exits with 34.");
+            System.out.println("Process exits with 34.");
             System.exit(34);
             return null; // This line is unreachable, but required for compilation
         }
@@ -344,23 +344,21 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         if (type.INT() != null) {
             if (operand instanceof Character c) {
                 int value = (int) c;
-                if ((c & 0x8000) != 0) {
-                    value |= 0xFFFF0000;
-                }
+                if ((c & 0x8000) != 0) value |= 0xFFFF0000;
                 return value;
+            } else if (operand instanceof Integer i) {
+                return i;
             }
             throw new RuntimeException("Cannot cast " + operand.getClass() + " to int");
-        } else if (type.CHAR() != null) {
+        }
+        if (type.CHAR() != null) {
             if (operand instanceof Integer i) {
-                int truncated = i & 0xFF;
-                if ((truncated & 0x80) != 0) {
-                    truncated |= 0xFFFFFF00;
-                }
-                return (char) truncated;
+                return (char) (i & 0xFF);
+            } else if (operand instanceof Character c) {
+                return c;
             }
             throw new RuntimeException("Cannot cast " + operand.getClass() + " to char");
         }
-
         throw new RuntimeException("Unknown type: " + type.getText());
     }
 
