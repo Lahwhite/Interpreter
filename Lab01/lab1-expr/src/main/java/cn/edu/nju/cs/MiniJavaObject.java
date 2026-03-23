@@ -12,4 +12,9 @@ public class MiniJavaObject {
         this.type = ty;
         this.value = val;
     }
+    
+    // 获取值
+    public Object getValue() {
+        return value;
+    }
 }
