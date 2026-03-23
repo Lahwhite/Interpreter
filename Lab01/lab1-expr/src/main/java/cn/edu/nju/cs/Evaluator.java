@@ -43,7 +43,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                     throw new RuntimeException("Invalid number format: " + text);
                 }
             } else if (ctx.BOOL_LITERAL() != null) {
-                return Boolean.parseBoolean(ctx.BOOL_LITERAL().getText());
+                return new MiniJavaObject("boolean", "true".equals(ctx.getText()));
             } else if (ctx.CHAR_LITERAL() != null) {
                 return parseCharLiteral(ctx.CHAR_LITERAL().getText());
             } else if (ctx.STRING_LITERAL() != null) {
@@ -63,7 +63,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             if (ctx.bop != null) {
                 // 二元运算符
                 String op = ctx.bop.getText();
-                if (op.equals("?")) {
+                if (ctx.bop.getType() == MiniJavaParser.QUESTION) {
                     // 三目运算符
                     Object condition = visit(ctx.expression(0));
                     return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
