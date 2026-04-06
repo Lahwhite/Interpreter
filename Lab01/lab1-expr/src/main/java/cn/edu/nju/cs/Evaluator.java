@@ -8,16 +8,23 @@ import java.util.Map;
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // 作用域栈，用于管理变量
     private List<Map<String, Object>> scopeStack = new ArrayList<>();
-    // 所有作用域的列表，用于保存所有作用域的信息
-    private List<Map<String, Object>> allScopes = new ArrayList<>();
     // 变量类型映射
     private Map<String, String> variableTypes = new LinkedHashMap<>();
+
+    private static final class BreakSignal extends RuntimeException {
+        @Override public synchronized Throwable fillInStackTrace() { return this; }
+    }
+
+    private static final class ContinueSignal extends RuntimeException {
+        @Override public synchronized Throwable fillInStackTrace() { return this; }
+    }
+
+    private int loopDepth = 0;
     
     // 构造函数，初始化全局作用域
     public Evaluator() {
         Map<String, Object> globalScope = new LinkedHashMap<>();
         scopeStack.add(globalScope);
-        allScopes.add(globalScope);
     }
 
     //****************************** 
@@ -25,21 +32,27 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     //******************************  
     
     //****************************** 
-    //******* 本次Lab-不保证对 *******
+    //******* 本次Lab-不保证对 ******
     //******************************  
 
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
-        Object result = null;
-        // 访问block节点
-        var blockContext = ctx.block();
-        // 遍历访问block中的所有blockStatement
-        for (var blockStatement : blockContext.blockStatement()) {
-            result = visit(blockStatement);
+        try {
+            Object result = null;
+            // 访问block节点
+            var blockContext = ctx.block();
+            // 遍历访问block中的所有blockStatement
+            for (var blockStatement : blockContext.blockStatement()) {
+                result = visit(blockStatement);
+            }
+            // 输出全局作用域中的变量
+            printScope(0, scopeStack.get(0));
+            return result;
+        } catch (RuntimeException e) {
+            System.out.println("Process exits with 34.");
+            System.exit(34);
+            return null;
         }
-        // 输出所有作用域中的变量
-        printScopes();
-        return result;
     }
     
     @Override
@@ -47,14 +60,31 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         // 进入新作用域
         Map<String, Object> newScope = new LinkedHashMap<>();
         scopeStack.add(newScope);
-        allScopes.add(newScope);
         Object result = null;
-        // 遍历访问block中的所有blockStatement
-        for (var blockStatement : ctx.blockStatement()) {
-            result = visit(blockStatement);
+        RuntimeException pending = null;
+        boolean shouldPrint = true;
+        try {
+            // 遍历访问block中的所有blockStatement
+            for (var blockStatement : ctx.blockStatement()) {
+                result = visit(blockStatement);
+            }
+        } catch (RuntimeException e) {
+            // break/continue 等控制流需要先完成作用域清理并打印；
+            // 运行时错误不应额外打印“未正常退出”的作用域
+            pending = e;
+            if (!(e instanceof BreakSignal) && !(e instanceof ContinueSignal)) {
+                shouldPrint = false;
+            }
+        } finally {
+            // 退出作用域（按“层级”打印：同一层级可能出现多次）
+            int level = scopeStack.size() - 1;
+            Map<String, Object> scopeToPrint = scopeStack.remove(scopeStack.size() - 1);
+            if (shouldPrint) {
+                printScope(level, scopeToPrint);
+            }
         }
-        // 退出作用域
-        scopeStack.remove(scopeStack.size() - 1);
+
+        if (pending != null) throw pending;
         return result;
     }
     
@@ -79,9 +109,17 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         } else {
             value = visit(ctx.primitiveType());
         }
+
+        value = coerceValueToType(type, value);
         
+        // Note 1: 同一作用域重复声明报错
+        Map<String, Object> currentScope = scopeStack.get(scopeStack.size() - 1);
+        if (currentScope.containsKey(variableName)) {
+            throw new RuntimeException("Duplicate declaration in same scope: " + variableName);
+        }
+
         // 存储变量到当前作用域
-        scopeStack.get(scopeStack.size() - 1).put(variableName, value);
+        currentScope.put(variableName, value);
         // 存储变量类型
         variableTypes.put(variableName, type);
         
@@ -90,54 +128,113 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     
     @Override
     public Object visitStatement(MiniJavaParser.StatementContext ctx) {
+        // 空语句 ;
+        if (ctx.getToken(MiniJavaParser.SEMI, 0) != null && ctx.getChildCount() == 1) {
+            return null;
+        }
+        // break / continue
+        if (ctx.getToken(MiniJavaParser.BREAK, 0) != null) {
+            if (loopDepth <= 0) throw new RuntimeException("break used outside loop");
+            throw new BreakSignal();
+        }
+        if (ctx.getToken(MiniJavaParser.CONTINUE, 0) != null) {
+            if (loopDepth <= 0) throw new RuntimeException("continue used outside loop");
+            throw new ContinueSignal();
+        }
         // 处理表达式语句
         if (ctx.expression() != null) {
             return visit(ctx.expression());
         }
+        // 处理 if 语句（必须按条件选择分支，不能 visitChildren）
+        if (ctx.getToken(MiniJavaParser.IF, 0) != null) {
+            Object cond = visit(ctx.parExpression().expression());
+            if (!(cond instanceof Boolean)) {
+                throw new RuntimeException("Invalid type for if condition: expected boolean");
+            }
+            if ((Boolean) cond) {
+                return visit(ctx.statement(0));
+            } else {
+                // 有 else 分支时 statement(1) 存在
+                if (ctx.statement().size() > 1) {
+                    return visit(ctx.statement(1));
+                }
+                return null;
+            }
+        }
         // 处理for循环语句
         if (ctx.getToken(MiniJavaParser.FOR, 0) != null) {
-            // 访问for循环控制部分
-            MiniJavaParser.ForControlContext forControl = ctx.getRuleContext(MiniJavaParser.ForControlContext.class, 0);
-            // 初始化
-            if (forControl.forInit() != null) {
+            // for 语句自身引入一层作用域：forInit 声明的变量属于这一层
+            Map<String, Object> forScope = new LinkedHashMap<>();
+            scopeStack.add(forScope);
+
+            MiniJavaParser.ForControlContext forControl = ctx.forControl();
+            if (forControl != null && forControl.forInit() != null) {
                 visit(forControl.forInit());
             }
-            // 循环条件和更新
-            while (true) {
-                // 检查条件
-                Object condition = null;
-                if (forControl.expression() != null) {
-                    condition = visit(forControl.expression());
+
+            MiniJavaParser.StatementContext body = ctx.statement(0);
+            boolean completedNormally = false;
+            loopDepth++;
+            try {
+                while (true) {
+                    Object condition = null;
+                    if (forControl != null && forControl.expression() != null) {
+                        condition = visit(forControl.expression());
+                    }
+                    if (!(condition instanceof Boolean) || !((Boolean) condition)) {
+                        break;
+                    }
+
+                    // 只执行循环体 statement（避免按 child 遍历导致额外/重复的作用域创建）
+                    try {
+                        if (body != null) {
+                            visit(body);
+                        }
+                    } catch (ContinueSignal ignored) {
+                        // continue: 进入更新表达式
+                    } catch (BreakSignal ignored) {
+                        break;
+                    }
+
+                    if (forControl != null && forControl.expressionList() != null) {
+                        visit(forControl.expressionList());
+                    }
                 }
-                if (condition == null || !(condition instanceof Boolean) || !((Boolean) condition)) {
-                    break;
-                }
-                // 执行循环体（只访问循环体，不包括for关键字和控制部分）
-                for (int i = 3; i < ctx.getChildCount(); i++) {
-                    visit(ctx.getChild(i));
-                }
-                // 更新
-                if (forControl.expressionList() != null) {
-                    visit(forControl.expressionList());
-                }
+                completedNormally = true;
+            } finally {
+                loopDepth--;
+            }
+
+            int level = scopeStack.size() - 1;
+            Map<String, Object> scopeToPrint = scopeStack.remove(scopeStack.size() - 1);
+            if (completedNormally) {
+                printScope(level, scopeToPrint);
             }
             return null;
         }
         // 处理while循环语句
         if (ctx.getToken(MiniJavaParser.WHILE, 0) != null) {
-            // 访问while循环条件部分
-            MiniJavaParser.ParExpressionContext parExpr = ctx.getRuleContext(MiniJavaParser.ParExpressionContext.class, 0);
-            // 循环条件
-            while (true) {
-                // 检查条件
-                Object condition = visit(parExpr.expression());
-                if (condition == null || !(condition instanceof Boolean) || !((Boolean) condition)) {
-                    break;
+            MiniJavaParser.ParExpressionContext parExpr = ctx.parExpression();
+            MiniJavaParser.StatementContext body = ctx.statement(0);
+            loopDepth++;
+            try {
+                while (true) {
+                    Object condition = (parExpr == null) ? null : visit(parExpr.expression());
+                    if (!(condition instanceof Boolean) || !((Boolean) condition)) {
+                        break;
+                    }
+                    try {
+                        if (body != null) {
+                            visit(body);
+                        }
+                    } catch (ContinueSignal ignored) {
+                        // continue: 直接进入下一次条件判断
+                    } catch (BreakSignal ignored) {
+                        break;
+                    }
                 }
-                // 执行循环体（只访问循环体，不包括while关键字和条件部分）
-                for (int i = 2; i < ctx.getChildCount(); i++) {
-                    visit(ctx.getChild(i));
-                }
+            } finally {
+                loopDepth--;
             }
             return null;
         }
@@ -249,21 +346,40 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                     Object result = evaluateBinaryOperator(left, right, op);
                     
                     // 处理赋值操作，更新变量值
-                    if (op.equals("=") || op.endsWith("=")) {
-                        // 检查左侧是否为标识符
-                        if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
-                            MiniJavaParser.ExpressionContext leftExpr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
-                            if (leftExpr.primary() != null && leftExpr.primary().identifier() != null) {
-                                String variableName = leftExpr.primary().identifier().getText();
-                                // 更新变量值到当前作用域
-                                for (int i = scopeStack.size() - 1; i >= 0; i--) {
-                                    if (scopeStack.get(i).containsKey(variableName)) {
-                                        scopeStack.get(i).put(variableName, result);
-                                        break;
-                                    }
-                                }
+                    if (isAssignmentOperator(op)) {
+                        // Note 1/2: LHS 必须是标识符，且必须赋值给一个已存在变量
+                        String variableName = null;
+                        if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext leftExpr
+                                && leftExpr.primary() != null
+                                && leftExpr.primary().identifier() != null) {
+                            variableName = leftExpr.primary().identifier().getText();
+                        }
+                        if (variableName == null) {
+                            throw new RuntimeException("Invalid assignment: LHS must be an identifier");
+                        }
+
+                        String declaredType = variableTypes.get(variableName);
+                        if (declaredType == null) {
+                            throw new RuntimeException("Invalid assignment: undeclared variable " + variableName);
+                        }
+                        validateAssignmentOperatorForType(op, declaredType);
+
+                        Object coercedResult = coerceValueToType(declaredType, result);
+
+                        boolean updated = false;
+                        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+                            if (scopeStack.get(i).containsKey(variableName)) {
+                                scopeStack.get(i).put(variableName, coercedResult);
+                                updated = true;
+                                break;
                             }
                         }
+                        if (!updated) {
+                            throw new RuntimeException("Invalid assignment: can only assign to a variable");
+                        }
+
+                        // 赋值表达式的值是写回后的值
+                        result = coercedResult;
                     }
                     
                     return result;
@@ -290,13 +406,20 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                             }
                             if (value != null && scopeIndex != -1) {
                                 // 处理前缀自增/自减运算符
+                                String declaredType = variableTypes.get(variableName);
                                 if (value instanceof Integer) {
                                     int intValue = (Integer) value;
-                                    int newValue;
-                                    if (op.equals("++")) newValue = intValue + 1; 
-                                    else newValue = intValue - 1;
-                                    scopeStack.get(scopeIndex).put(variableName, newValue);
-                                    return newValue; 
+                                    int newValue = op.equals("++") ? (intValue + 1) : (intValue - 1);
+                                    Object coerced = declaredType == null ? newValue : coerceValueToType(declaredType, newValue);
+                                    scopeStack.get(scopeIndex).put(variableName, coerced);
+                                    return coerced;
+                                }
+                                if (value instanceof Character c) {
+                                    int intValue = c.charValue();
+                                    int newValue = op.equals("++") ? (intValue + 1) : (intValue - 1);
+                                    Object coerced = declaredType == null ? (char) (newValue & 0xFF) : coerceValueToType(declaredType, newValue);
+                                    scopeStack.get(scopeIndex).put(variableName, coerced);
+                                    return coerced;
                                 }
                             }
                         }
@@ -329,16 +452,32 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                         if (value != null && scopeIndex != -1) {
                             // 处理后缀自增/自减运算符
                             if (op.equals("++")) {
+                                String declaredType = variableTypes.get(variableName);
                                 if (value instanceof Integer) {
                                     int intValue = (Integer) value;
-                                    scopeStack.get(scopeIndex).put(variableName, intValue + 1);
-                                    return intValue; // 返回自增前的值
+                                    Object coercedNew = declaredType == null ? (intValue + 1) : coerceValueToType(declaredType, intValue + 1);
+                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
+                                    return value; // 返回自增前的值
+                                }
+                                if (value instanceof Character c) {
+                                    int intValue = c.charValue();
+                                    Object coercedNew = declaredType == null ? (char) ((intValue + 1) & 0xFF) : coerceValueToType(declaredType, intValue + 1);
+                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
+                                    return value; // 返回自增前的值
                                 }
                             } else if (op.equals("--")) {
+                                String declaredType = variableTypes.get(variableName);
                                 if (value instanceof Integer) {
                                     int intValue = (Integer) value;
-                                    scopeStack.get(scopeIndex).put(variableName, intValue - 1);
-                                    return intValue; // 返回自减前的值
+                                    Object coercedNew = declaredType == null ? (intValue - 1) : coerceValueToType(declaredType, intValue - 1);
+                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
+                                    return value; // 返回自减前的值
+                                }
+                                if (value instanceof Character c) {
+                                    int intValue = c.charValue();
+                                    Object coercedNew = declaredType == null ? (char) ((intValue - 1) & 0xFF) : coerceValueToType(declaredType, intValue - 1);
+                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
+                                    return value; // 返回自减前的值
                                 }
                             }
                         }
@@ -359,12 +498,66 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
     }
 
+    private boolean isAssignmentOperator(String op) {
+        return op.equals("=")
+                || op.equals("+=") || op.equals("-=") || op.equals("*=") || op.equals("/=") || op.equals("%=")
+                || op.equals("&=") || op.equals("|=") || op.equals("^=")
+                || op.equals("<<=") || op.equals(">>=") || op.equals(">>>=");
+    }
+
+    private void validateAssignmentOperatorForType(String op, String declaredType) {
+        // Note 4: string 只支持 = 和 +=
+        if ("string".equals(declaredType)) {
+            if (!op.equals("=") && !op.equals("+=")) {
+                throw new RuntimeException("Invalid assignment operator " + op + " for string");
+            }
+            return;
+        }
+        // boolean 只支持 =
+        if ("boolean".equals(declaredType)) {
+            if (!op.equals("=")) {
+                throw new RuntimeException("Invalid assignment operator " + op + " for boolean");
+            }
+            return;
+        }
+        // int/char：支持所有赋值运算符（运算阶段按 int 计算，最终由 coerceValueToType 收敛）
+        if ("int".equals(declaredType) || "char".equals(declaredType)) {
+            return;
+        }
+        throw new RuntimeException("Invalid assignment target type: " + declaredType);
+    }
+
+    private Object coerceValueToType(String type, Object value) {
+        if (type == null) return value;
+        return switch (type) {
+            case "int" -> {
+                if (value instanceof Integer) yield value;
+                if (value instanceof Character) yield toInt(value, "int");
+                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to int");
+            }
+            case "char" -> {
+                if (value instanceof Character) yield value;
+                if (value instanceof Integer i) yield (char) (i & 0xFF);
+                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to char");
+            }
+            case "boolean" -> {
+                if (value instanceof Boolean) yield value;
+                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to boolean");
+            }
+            case "string" -> {
+                if (value instanceof String) yield value;
+                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to string");
+            }
+            default -> value;
+        };
+    }
+
     @Override
     public Object visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
         String type = ctx.getText();
         Object value = "";
         if (type.equals("int") || type.equals("char")) {
-            value = 0;
+            value = type.equals("char") ? (char) 0 : 0;
         } else if (type.equals("boolean")) {
             value = false;
         } 
@@ -693,17 +886,11 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
     }
     
-    // 我之后考虑将这部分逻辑转移到main类中
-    // 输出所有作用域中的变量
-    private void printScopes() {
-        for (int i = 0; i < allScopes.size(); i++) {
-            Map<String, Object> scope = allScopes.get(i);
-            for (Map.Entry<String, Object> entry : scope.entrySet()) {
-                String variableName = entry.getKey();
-                Object value = entry.getValue();
-                String type = variableTypes.getOrDefault(variableName, "unknown");
-                System.out.println("Scope " + i + ": " + variableName + ": (" + type + ") " + value);
-            }
-        }
+    private void printScope(int level, Map<String, Object> scope) {
+        scope.keySet().stream().sorted().forEach(variableName -> {
+            Object value = scope.get(variableName);
+            String type = variableTypes.getOrDefault(variableName, "unknown");
+            System.out.println("Scope " + level + ": " + variableName + ": (" + type + ") " + value);
+        });
     }
 }
