@@ -17,6 +17,54 @@ public interface MiniJavaParserVisitor<T> extends ParseTreeVisitor<T> {
 	 */
 	T visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx);
 	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#block}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitBlock(MiniJavaParser.BlockContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#blockStatement}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitBlockStatement(MiniJavaParser.BlockStatementContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#localVariableDeclaration}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitLocalVariableDeclaration(MiniJavaParser.LocalVariableDeclarationContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#statement}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitStatement(MiniJavaParser.StatementContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#parExpression}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitParExpression(MiniJavaParser.ParExpressionContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#forControl}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitForControl(MiniJavaParser.ForControlContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#forInit}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitForInit(MiniJavaParser.ForInitContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#expressionList}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitExpressionList(MiniJavaParser.ExpressionListContext ctx);
+	/**
 	 * Visit a parse tree produced by {@link MiniJavaParser#expression}.
 	 * @param ctx the parse tree
 	 * @return the visitor result
@@ -34,6 +82,12 @@ public interface MiniJavaParserVisitor<T> extends ParseTreeVisitor<T> {
 	 * @return the visitor result
 	 */
 	T visitLiteral(MiniJavaParser.LiteralContext ctx);
+	/**
+	 * Visit a parse tree produced by {@link MiniJavaParser#identifier}.
+	 * @param ctx the parse tree
+	 * @return the visitor result
+	 */
+	T visitIdentifier(MiniJavaParser.IdentifierContext ctx);
 	/**
 	 * Visit a parse tree produced by {@link MiniJavaParser#primitiveType}.
 	 * @param ctx the parse tree

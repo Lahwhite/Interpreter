@@ -19,20 +19,16 @@ public class Main {
         // 添加自定义错误监听器
         ErrorListener errorListener = new ErrorListener();
         parser.removeErrorListeners(); // 移除默认监听器
-        parser.addErrorListener(errorListener);
-        
+        parser.addErrorListener(errorListener);        
         // 解析编译单元
         ParseTree pt = parser.compilationUnit();
-
         // 检查是否有解析错误
         if (errorListener.hasErrors()) {
             System.out.println("Process exits with 34.");
             System.exit(34);
             return;
         }
-
-        // CODE
-        // new MiniJavaParserBaseVisitor<>().visit(pt);
+        
         Evaluator evaluator = new Evaluator();
         Object result = evaluator.visit(pt);
         System.out.println(result);

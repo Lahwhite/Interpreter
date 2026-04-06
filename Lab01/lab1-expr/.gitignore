@@ -1,4 +1,4 @@
-test_*
+testcases/
 simple_*
 
 .idea

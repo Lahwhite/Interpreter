@@ -4,8 +4,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
-    private final Map<String, Object> symbolTable = new HashMap<>();
-
+    //****************************** 
+    //********** 接口方法 ***********
+    //******************************  
     
     // 检查过
     @Override
@@ -72,7 +73,6 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                 return evaluateUnaryPostfixOperator(operand, op);
             } else if (ctx.primitiveType() != null) {
                 // 类型转换
-                String type = ctx.primitiveType().getText();
                 Object operand = visit(ctx.expression(0));
                 return evaluateTypeCast(operand, ctx.primitiveType());
             }
@@ -97,10 +97,11 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         return value;
     }
 
-    private boolean isTruthy(Object v) {
-        if (v instanceof Boolean b) return b;
-        return true;
-    }
+
+    
+    //******************************
+    //********* 非接口方法 ***********
+    //******************************  
 
     // int 和 char 转换为 int，检查过
     private int toInt(Object v, String op) {
@@ -116,19 +117,19 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
         
         if (op.equals("and")) {
-            if (!isTruthy(left)) return false;
+            if (!((Boolean)left)) return false;
             Object right = visit(rightExpr);
             if (!(right instanceof Boolean)) {
                 throw new RuntimeException("Invalid type for and operator: expected boolean, got " + right.getClass().getName());
             }
-            return isTruthy(right);
+            return (Boolean)right;
         } else if (op.equals("or")) {
-            if (isTruthy(left)) return true;
+            if ((Boolean)left) return true;
             Object right = visit(rightExpr);
             if (!(right instanceof Boolean)) {
                 throw new RuntimeException("Invalid type for or operator: expected boolean, got " + right.getClass().getName());
             }
-            return isTruthy(right);
+            return (Boolean)right;
         } else {
             throw new RuntimeException("Unknown logical operator: " + op);
         }
