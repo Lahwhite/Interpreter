@@ -1,11 +1,29 @@
 package cn.edu.nju.cs;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
+    // 作用域栈，用于管理变量
+    private List<Map<String, Object>> scopeStack = new ArrayList<>();
+    // 变量类型映射
+    private Map<String, String> variableTypes = new HashMap<>();
+    
+    // 构造函数，初始化全局作用域
+    public Evaluator() {
+        scopeStack.add(new HashMap<>());
+    }
+
     //****************************** 
     //********** 接口方法 ***********
     //******************************  
     
-    // 检查过
+    //****************************** 
+    //******* 本次Lab-不保证对 *******
+    //******************************  
+
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
         Object result = null;
@@ -15,10 +33,11 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         for (var blockStatement : blockContext.blockStatement()) {
             result = visit(blockStatement);
         }
+        // 输出所有作用域中的变量
+        printScopes();
         return result;
     }
     
-    // 检查过
     @Override
     public Object visitBlock(MiniJavaParser.BlockContext ctx) {
         Object result = null;
@@ -41,12 +60,22 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     
     @Override
     public Object visitLocalVariableDeclaration(MiniJavaParser.LocalVariableDeclarationContext ctx) {
-        // 如果有初始化表达式，返回表达式结果
+        String type = ctx.primitiveType().getText();
+        String variableName = ctx.identifier().getText();
+        Object value = null;
+        
         if (ctx.expression() != null) {
-            return visit(ctx.expression());
+            value = visit(ctx.expression());
+        } else {
+            value = visit(ctx.primitiveType());
         }
-        // 否则返回类型默认值
-        return visit(ctx.primitiveType());
+        
+        // 存储变量到当前作用域
+        scopeStack.get(scopeStack.size() - 1).put(variableName, value);
+        // 存储变量类型
+        variableTypes.put(variableName, type);
+        
+        return value;
     }
     
     @Override
@@ -89,20 +118,33 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
 
     @Override
     public Object visitIdentifier(MiniJavaParser.IdentifierContext ctx) {
-        // 对于标识符，返回其文本值
-        return ctx.getText();
+        String name = ctx.getText();
+        // 从作用域栈中查找变量，从当前作用域开始向上查找
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            if (scopeStack.get(i).containsKey(name)) {
+                return scopeStack.get(i).get(name);
+            }
+        }
+        // 如果找不到变量，返回变量名（可能是一个新的变量声明）
+        return name;
     }
 
-    // 检查过
+    //****************************** 
+    //********** 检查过的 ***********
+    //******************************  
+
     @Override
     public Object visitPrimary(MiniJavaParser.PrimaryContext ctx) {
         if (ctx.expression() != null) {
             return visit(ctx.expression());
+        } else if (ctx.literal() != null) {
+            return visit(ctx.literal());
+        } else if (ctx.identifier() != null) {
+            return visit(ctx.identifier());
         }
-        return visit(ctx.literal());
+        return null;
     }
 
-    // 检查过
     @Override
     public Object visitLiteral(MiniJavaParser.LiteralContext ctx) {
         if (ctx.DECIMAL_LITERAL() != null) {
@@ -118,7 +160,6 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         return null;
     }
 
-    // 检查过
     @Override
     public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
         try {
@@ -136,18 +177,106 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                     // 二元运算符
                     Object left = visit(ctx.expression(0));
                     Object right = visit(ctx.expression(1));
-                    return evaluateBinaryOperator(left, right, op);
+                    Object result = evaluateBinaryOperator(left, right, op);
+                    
+                    // 处理赋值操作，更新变量值
+                    if (op.equals("=") || op.endsWith("=")) {
+                        // 检查左侧是否为标识符
+                        if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
+                            MiniJavaParser.ExpressionContext leftExpr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
+                            if (leftExpr.primary() != null && leftExpr.primary().identifier() != null) {
+                                String variableName = leftExpr.primary().identifier().getText();
+                                // 更新变量值到当前作用域
+                                for (int i = scopeStack.size() - 1; i >= 0; i--) {
+                                    if (scopeStack.get(i).containsKey(variableName)) {
+                                        scopeStack.get(i).put(variableName, result);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    return result;
                 }
             } else if (ctx.prefix != null) {
                 // 前缀运算符
-                Object operand = visit(ctx.expression(0));
                 String op = ctx.prefix.getText();
-                return evaluateUnaryPrefixOperator(operand, op);
+                // 处理前缀自增/自减运算符
+                if (op.equals("++") || op.equals("--")) {
+                    // 检查左侧是否为标识符（变量）
+                    if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
+                        MiniJavaParser.ExpressionContext expr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
+                        if (expr.primary() != null && expr.primary().identifier() != null) {
+                            String variableName = expr.primary().identifier().getText();
+                            // 查找变量值
+                            Object value = null;
+                            int scopeIndex = -1;
+                            for (int i = scopeStack.size() - 1; i >= 0; i--) {
+                                if (scopeStack.get(i).containsKey(variableName)) {
+                                    value = scopeStack.get(i).get(variableName);
+                                    scopeIndex = i;
+                                    break;
+                                }
+                            }
+                            if (value != null && scopeIndex != -1) {
+                                // 处理前缀自增/自减运算符
+                                if (value instanceof Integer) {
+                                    int intValue = (Integer) value;
+                                    int newValue;
+                                    if (op.equals("++")) newValue = intValue + 1; 
+                                    else newValue = intValue - 1;
+                                    scopeStack.get(scopeIndex).put(variableName, newValue);
+                                    return newValue; 
+                                }
+                            }
+                        }
+                    }
+                    // 如果不是变量，或者处理失败，抛出异常
+                    throw new RuntimeException("Invalid use of " + op + " operator: can only be applied to variables");
+                } else {
+                    // 其他前缀运算符
+                    Object operand = visit(ctx.expression(0));
+                    return evaluateUnaryPrefixOperator(operand, op);
+                }
             } else if (ctx.postfix != null) {
                 // 后缀运算符
-                Object operand = visit(ctx.expression(0));
                 String op = ctx.postfix.getText();
-                return evaluateUnaryPostfixOperator(operand, op);
+                // 检查左侧是否为标识符（变量）
+                if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
+                    MiniJavaParser.ExpressionContext expr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
+                    if (expr.primary() != null && expr.primary().identifier() != null) {
+                        String variableName = expr.primary().identifier().getText();
+                        // 查找变量值
+                        Object value = null;
+                        int scopeIndex = -1;
+                        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+                            if (scopeStack.get(i).containsKey(variableName)) {
+                                value = scopeStack.get(i).get(variableName);
+                                scopeIndex = i;
+                                break;
+                            }
+                        }
+                        if (value != null && scopeIndex != -1) {
+                            // 处理后缀自增/自减运算符
+                            if (op.equals("++")) {
+                                if (value instanceof Integer) {
+                                    int intValue = (Integer) value;
+                                    scopeStack.get(scopeIndex).put(variableName, intValue + 1);
+                                    return intValue; // 返回自增前的值
+                                }
+                            } else if (op.equals("--")) {
+                                if (value instanceof Integer) {
+                                    int intValue = (Integer) value;
+                                    scopeStack.get(scopeIndex).put(variableName, intValue - 1);
+                                    return intValue; // 返回自减前的值
+                                }
+                            }
+                        }
+                    }
+                }
+                // 如果不是变量，或者处理失败，抛出异常
+                throw new RuntimeException("Invalid use of " + op + " operator: can only be applied to variables");
             } else if (ctx.primitiveType() != null) {
                 // 类型转换
                 Object operand = visit(ctx.expression(0));
@@ -161,7 +290,6 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
     }
 
-    // 检查过
     @Override
     public Object visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
         String type = ctx.getText();
@@ -302,7 +430,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                     }
                     throw new RuntimeException("Invalid types for >>> operator");
                 case "=":
-                    return toInt(right, "=");
+                    return right;
                 case "+=":
                     if (left instanceof String || right instanceof String) {
                         return left.toString() + right.toString();
@@ -403,20 +531,6 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         }
     }
 
-    // 后缀运算符，检查过
-    private Object evaluateUnaryPostfixOperator(Object operand, String op) {
-        switch (op) {
-            case "++":
-                // ++ operator can only be applied to variables, not literals
-                throw new RuntimeException("Invalid use of ++ operator: can only be applied to variables");
-            case "--":
-                // -- operator can only be applied to variables, not literals
-                throw new RuntimeException("Invalid use of -- operator: can only be applied to variables");
-            default:
-                throw new RuntimeException("Unknown unary postfix operator: " + op);
-        }
-    }
-
     // 类型转换，检查过
     private Object evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
         if (type.INT() != null) {
@@ -494,6 +608,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         throw new RuntimeException("Type mismatch: cannot compare " + left.getClass().getName() + " and " + right.getClass().getName());
     }
 
+    // 检查过
     private int compare(Object left, Object right) {
         try {
             if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
@@ -506,6 +621,20 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             throw new RuntimeException("Cannot compare " + left.getClass() + " and " + right.getClass());
         } catch (Exception e) {
             throw new RuntimeException("Comparison error: " + e.getMessage());
+        }
+    }
+    
+    // 我之后考虑将这部分逻辑转移到main类中
+    // 输出所有作用域中的变量
+    private void printScopes() {
+        for (int i = 0; i < scopeStack.size(); i++) {
+            Map<String, Object> scope = scopeStack.get(i);
+            for (Map.Entry<String, Object> entry : scope.entrySet()) {
+                String variableName = entry.getKey();
+                Object value = entry.getValue();
+                String type = variableTypes.getOrDefault(variableName, "unknown");
+                System.out.println("Scope " + i + ": " + variableName + ": (" + type + ") " + value);
+            }
         }
     }
 }
