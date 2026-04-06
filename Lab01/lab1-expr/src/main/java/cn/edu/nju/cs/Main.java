@@ -31,7 +31,7 @@ public class Main {
         
         Evaluator evaluator = new Evaluator();
         Object result = evaluator.visit(pt);
-        System.out.println(result);
+        // System.out.println(result);
     }
 
 

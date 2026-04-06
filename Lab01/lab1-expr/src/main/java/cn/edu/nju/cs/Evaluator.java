@@ -1,19 +1,23 @@
 package cn.edu.nju.cs;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // 作用域栈，用于管理变量
     private List<Map<String, Object>> scopeStack = new ArrayList<>();
+    // 所有作用域的列表，用于保存所有作用域的信息
+    private List<Map<String, Object>> allScopes = new ArrayList<>();
     // 变量类型映射
-    private Map<String, String> variableTypes = new HashMap<>();
+    private Map<String, String> variableTypes = new LinkedHashMap<>();
     
     // 构造函数，初始化全局作用域
     public Evaluator() {
-        scopeStack.add(new HashMap<>());
+        Map<String, Object> globalScope = new LinkedHashMap<>();
+        scopeStack.add(globalScope);
+        allScopes.add(globalScope);
     }
 
     //****************************** 
@@ -40,11 +44,17 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     
     @Override
     public Object visitBlock(MiniJavaParser.BlockContext ctx) {
+        // 进入新作用域
+        Map<String, Object> newScope = new LinkedHashMap<>();
+        scopeStack.add(newScope);
+        allScopes.add(newScope);
         Object result = null;
         // 遍历访问block中的所有blockStatement
         for (var blockStatement : ctx.blockStatement()) {
             result = visit(blockStatement);
         }
+        // 退出作用域
+        scopeStack.remove(scopeStack.size() - 1);
         return result;
     }
     
@@ -84,20 +94,79 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         if (ctx.expression() != null) {
             return visit(ctx.expression());
         }
+        // 处理for循环语句
+        if (ctx.getToken(MiniJavaParser.FOR, 0) != null) {
+            // 访问for循环控制部分
+            MiniJavaParser.ForControlContext forControl = ctx.getRuleContext(MiniJavaParser.ForControlContext.class, 0);
+            // 初始化
+            if (forControl.forInit() != null) {
+                visit(forControl.forInit());
+            }
+            // 循环条件和更新
+            while (true) {
+                // 检查条件
+                Object condition = null;
+                if (forControl.expression() != null) {
+                    condition = visit(forControl.expression());
+                }
+                if (condition == null || !(condition instanceof Boolean) || !((Boolean) condition)) {
+                    break;
+                }
+                // 执行循环体（只访问循环体，不包括for关键字和控制部分）
+                for (int i = 3; i < ctx.getChildCount(); i++) {
+                    visit(ctx.getChild(i));
+                }
+                // 更新
+                if (forControl.expressionList() != null) {
+                    visit(forControl.expressionList());
+                }
+            }
+            return null;
+        }
+        // 处理while循环语句
+        if (ctx.getToken(MiniJavaParser.WHILE, 0) != null) {
+            // 访问while循环条件部分
+            MiniJavaParser.ParExpressionContext parExpr = ctx.getRuleContext(MiniJavaParser.ParExpressionContext.class, 0);
+            // 循环条件
+            while (true) {
+                // 检查条件
+                Object condition = visit(parExpr.expression());
+                if (condition == null || !(condition instanceof Boolean) || !((Boolean) condition)) {
+                    break;
+                }
+                // 执行循环体（只访问循环体，不包括while关键字和条件部分）
+                for (int i = 2; i < ctx.getChildCount(); i++) {
+                    visit(ctx.getChild(i));
+                }
+            }
+            return null;
+        }
         // 处理其他类型的语句
         return visitChildren(ctx);
+    }
+    
+    @Override
+    public Object visitForControl(MiniJavaParser.ForControlContext ctx) {
+        // 访问for循环初始化部分
+        if (ctx.forInit() != null) {
+            visit(ctx.forInit());
+        }
+        // 访问for循环条件部分
+        Object condition = null;
+        if (ctx.expression() != null) {
+            condition = visit(ctx.expression());
+        }
+        // 访问for循环更新部分
+        if (ctx.expressionList() != null) {
+            visit(ctx.expressionList());
+        }
+        return condition;
     }
     
     @Override
     public Object visitParExpression(MiniJavaParser.ParExpressionContext ctx) {
         // 访问括号中的表达式
         return visit(ctx.expression());
-    }
-    
-    @Override
-    public Object visitForControl(MiniJavaParser.ForControlContext ctx) {
-        // 访问for循环控制部分的所有子节点
-        return visitChildren(ctx);
     }
     
     @Override
@@ -627,8 +696,8 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // 我之后考虑将这部分逻辑转移到main类中
     // 输出所有作用域中的变量
     private void printScopes() {
-        for (int i = 0; i < scopeStack.size(); i++) {
-            Map<String, Object> scope = scopeStack.get(i);
+        for (int i = 0; i < allScopes.size(); i++) {
+            Map<String, Object> scope = allScopes.get(i);
             for (Map.Entry<String, Object> entry : scope.entrySet()) {
                 String variableName = entry.getKey();
                 Object value = entry.getValue();
