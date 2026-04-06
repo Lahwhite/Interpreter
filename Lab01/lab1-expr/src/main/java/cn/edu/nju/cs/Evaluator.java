@@ -1,8 +1,5 @@
 package cn.edu.nju.cs;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     //****************************** 
     //********** 接口方法 ***********
@@ -11,9 +8,89 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // 检查过
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
-        var result = visit(ctx.expression());
-        // System.out.println(result);
+        Object result = null;
+        // 访问block节点
+        var blockContext = ctx.block();
+        // 遍历访问block中的所有blockStatement
+        for (var blockStatement : blockContext.blockStatement()) {
+            result = visit(blockStatement);
+        }
         return result;
+    }
+    
+    // 检查过
+    @Override
+    public Object visitBlock(MiniJavaParser.BlockContext ctx) {
+        Object result = null;
+        // 遍历访问block中的所有blockStatement
+        for (var blockStatement : ctx.blockStatement()) {
+            result = visit(blockStatement);
+        }
+        return result;
+    }
+    
+    @Override
+    public Object visitBlockStatement(MiniJavaParser.BlockStatementContext ctx) {
+        // 处理局部变量声明
+        if (ctx.localVariableDeclaration() != null) {
+            return visit(ctx.localVariableDeclaration());
+        }
+        // 处理语句
+        return visit(ctx.statement());
+    }
+    
+    @Override
+    public Object visitLocalVariableDeclaration(MiniJavaParser.LocalVariableDeclarationContext ctx) {
+        // 如果有初始化表达式，返回表达式结果
+        if (ctx.expression() != null) {
+            return visit(ctx.expression());
+        }
+        // 否则返回类型默认值
+        return visit(ctx.primitiveType());
+    }
+    
+    @Override
+    public Object visitStatement(MiniJavaParser.StatementContext ctx) {
+        // 处理表达式语句
+        if (ctx.expression() != null) {
+            return visit(ctx.expression());
+        }
+        // 处理其他类型的语句
+        return visitChildren(ctx);
+    }
+    
+    @Override
+    public Object visitParExpression(MiniJavaParser.ParExpressionContext ctx) {
+        // 访问括号中的表达式
+        return visit(ctx.expression());
+    }
+    
+    @Override
+    public Object visitForControl(MiniJavaParser.ForControlContext ctx) {
+        // 访问for循环控制部分的所有子节点
+        return visitChildren(ctx);
+    }
+    
+    @Override
+    public Object visitForInit(MiniJavaParser.ForInitContext ctx) {
+        // 访问for循环初始化部分的所有子节点
+        return visitChildren(ctx);
+    }
+    
+    @Override
+    public Object visitExpressionList(MiniJavaParser.ExpressionListContext ctx) {
+        Object result = null;
+        // 遍历访问所有表达式，返回最后一个表达式的结果
+        for (var expr : ctx.expression()) {
+            result = visit(expr);
+        }
+        return result;
+    }
+
+    @Override
+    public Object visitIdentifier(MiniJavaParser.IdentifierContext ctx) {
+        // 对于标识符，返回其文本值
+        return ctx.getText();
     }
 
     // 检查过
@@ -96,8 +173,8 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         } 
         return value;
     }
-
-
+    
+    
     
     //******************************
     //********* 非接口方法 ***********
