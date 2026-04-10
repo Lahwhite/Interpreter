@@ -30,7 +30,8 @@ public class Main {
         }
         
         Evaluator evaluator = new Evaluator();
-        Object result = evaluator.visit(pt);
+        evaluator.visit(pt);
+        // Object result = evaluator.visit(pt);
         // System.out.println(result);
     }
 
