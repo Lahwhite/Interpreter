@@ -177,17 +177,18 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             loopDepth++;
             try {
                 while (true) {
-                    Object condition = null;
                     if (forControl != null && forControl.expression() != null) {
-                        condition = visit(forControl.expression());
-                    }
-                    if (!(condition instanceof Boolean) || !((Boolean) condition)) {
-                        break;
+                        Object condition = visit(forControl.expression());
+                        if (!(condition instanceof Boolean) || !((Boolean) condition)) {
+                            break;
+                        }
                     }
 
-                    // 只执行循环体 statement（避免按 child 遍历导致额外/重复的作用域创建）
+                    // 执行循环体
                     try {
                         if (body != null) {
+                            // 如果循环体是 block，visit(body) 会调用 visitBlock 并创建新 scope
+                            // 如果循环体是 expr（如 if 语句），则不应创建额外 scope
                             visit(body);
                         }
                     } catch (ContinueSignal ignored) {
