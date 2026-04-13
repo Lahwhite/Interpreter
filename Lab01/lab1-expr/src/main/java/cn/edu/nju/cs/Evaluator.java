@@ -557,7 +557,12 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // int 和 char 转换为 int，检查过
     private int toInt(Object v, String op) {
         if (v instanceof Integer i) return i;
-        if (v instanceof Character c) return (int) c;
+        // if (v instanceof Character c) return (int) c;
+        if (v instanceof Character c) {
+            int value = (int) c;
+            if ((c & 0x8000) != 0) value |= 0xFFFF0000;
+            return value;
+        }
         throw new RuntimeException("Invalid operand type for " + op + ": " + v.getClass());
     }
 
