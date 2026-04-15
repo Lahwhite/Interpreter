@@ -560,7 +560,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         // if (v instanceof Character c) return (int) c;
         if (v instanceof Character c) {
             int value = (int) c;
-            if ((c & 0x8000) != 0) value |= 0xFFFF0000;
+            if ((c & 0x80) != 0) value |= 0xFFFFFF00;
             return value;
         }
         throw new RuntimeException("Invalid operand type for " + op + ": " + v.getClass());
@@ -785,12 +785,8 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // 类型转换，检查过
     private Object evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
         if (type.INT() != null) {
-            if (operand instanceof Character c) {
-                int value = (int) c;
-                if ((c & 0x8000) != 0) value |= 0xFFFF0000;
-                return value;
-            } else if (operand instanceof Integer i) {
-                return i;
+            if (operand instanceof Character c || operand instanceof Integer i) {
+                return toInt(operand, "type cast");
             }
             throw new RuntimeException("Cannot cast " + operand.getClass() + " to int");
         }
