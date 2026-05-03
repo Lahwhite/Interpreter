@@ -1,15 +1,28 @@
 package cn.edu.nju.cs;
 
+import java.lang.reflect.Array;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+/**
+ * Lab 3：方法、重载、数组、var、内建函数与入口 main。
+ */
 public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
-    // 作用域栈，用于管理变量
-    private List<Map<String, Object>> scopeStack = new ArrayList<>();
-    // 变量类型映射栈
-    private List<Map<String, String>> typeStack = new ArrayList<>();
+
+    private static final Object VOID_RETURN = new Object();
+    private static final String NULL_T = "null";
+
+    private enum InferenceMode {
+        ARGUMENT,
+        GENERAL,
+        VAR_INIT,
+        RETURN_STMT
+    }
 
     private static final class BreakSignal extends RuntimeException {
         @Override public synchronized Throwable fillInStackTrace() { return this; }
@@ -19,153 +32,286 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         @Override public synchronized Throwable fillInStackTrace() { return this; }
     }
 
-    private int loopDepth = 0;
-    
-    // 构造函数，初始化全局作用域
-    public Evaluator() {
-        Map<String, Object> globalScope = new LinkedHashMap<>();
-        scopeStack.add(globalScope);
-        Map<String, String> globalTypes = new LinkedHashMap<>();
-        typeStack.add(globalTypes);
+    private static final class ReturnSignal extends RuntimeException {
+        final Object value;
+
+        ReturnSignal(Object value) {
+            this.value = value;
+        }
+
+        @Override public synchronized Throwable fillInStackTrace() { return this; }
     }
 
-    //****************************** 
-    //********** 接口方法 ***********
-    //******************************  
-    
-    //****************************** 
-    //******* 本次Lab-不保证对 ******
-    //******************************  
+    private static final class CompiledMethod {
+        final String returnType;
+        final List<String> paramTypes;
+        final List<String> paramNames;
+        final MiniJavaParser.BlockContext body;
+
+        CompiledMethod(String returnType, List<String> paramTypes, List<String> paramNames, MiniJavaParser.BlockContext body) {
+            this.returnType = returnType;
+            this.paramTypes = paramTypes;
+            this.paramNames = paramNames;
+            this.body = body;
+        }
+    }
+
+    private final Map<String, List<CompiledMethod>> methods = new LinkedHashMap<>();
+    private final List<Map<String, Object>> scopeStack = new ArrayList<>();
+    private final List<Map<String, String>> typeStack = new ArrayList<>();
+
+    private final Deque<String> currentReturnType = new ArrayDeque<>();
+    private int loopDepth = 0;
+
+    /** 解析局部变量初始化器 / 数组字面量时期望的完整类型 */
+    private final Deque<String> expectedDeclType = new ArrayDeque<>();
+
+    public Evaluator() {
+        scopeStack.add(new LinkedHashMap<>());
+        typeStack.add(new LinkedHashMap<>());
+    }
+
+    private static void exitWith(int code) {
+        System.out.println("Process exits with " + code + ".");
+        System.exit(code);
+    }
+
+    private static void exitAssertFail() {
+        exitWith(33);
+    }
+
+    private static void exitRuntime() {
+        exitWith(34);
+    }
+
+    // -------------------------------------------------------------------------
+    // compilation & entry
+    // -------------------------------------------------------------------------
 
     @Override
     public Object visitCompilationUnit(MiniJavaParser.CompilationUnitContext ctx) {
         try {
-            Object result = null;
-            // 访问block节点
-            var blockContext = ctx.block();
-            // 遍历访问block中的所有blockStatement
-            for (var blockStatement : blockContext.blockStatement()) {
-                result = visit(blockStatement);
+            methods.clear();
+            for (MiniJavaParser.MethodDeclarationContext md : ctx.methodDeclaration()) {
+                registerMethod(md);
             }
-            // 输出全局作用域中的变量
-            printScope(0, scopeStack.get(0), typeStack.get(0));
-            return result;
+            CompiledMethod main = resolveEntryMain();
+            Object ret = invokeUserMethod(main, List.of());
+            if (!(ret instanceof Integer)) {
+                throw new RuntimeException("main must return int");
+            }
+            int code = (Integer) ret;
+            System.out.println("Process exits with " + code + ".");
+            System.exit(code);
+            return null;
         } catch (RuntimeException e) {
-            System.out.println("Process exits with 34.");
-            System.exit(34);
+            exitRuntime();
             return null;
         }
     }
-    
+
+    private void registerMethod(MiniJavaParser.MethodDeclarationContext md) {
+        String ret = md.VOID() != null ? "void" : typeTypeToString(md.typeType());
+        String name = md.identifier().getText();
+        List<String> pTypes = new ArrayList<>();
+        List<String> pNames = new ArrayList<>();
+        MiniJavaParser.FormalParameterListContext fpl = md.formalParameters().formalParameterList();
+        if (fpl != null) {
+            for (MiniJavaParser.FormalParameterContext fp : fpl.formalParameter()) {
+                pTypes.add(typeTypeToString(fp.typeType()));
+                pNames.add(fp.identifier().getText());
+            }
+        }
+        CompiledMethod cm = new CompiledMethod(ret, pTypes, pNames, md.block());
+        List<CompiledMethod> list = methods.computeIfAbsent(name, k -> new ArrayList<>());
+        for (CompiledMethod existing : list) {
+            if (existing.paramTypes.equals(pTypes)) {
+                throw new RuntimeException("Duplicate method signature: " + name);
+            }
+        }
+        list.add(cm);
+    }
+
+    private CompiledMethod resolveEntryMain() {
+        List<CompiledMethod> mains = methods.getOrDefault("main", List.of());
+        List<CompiledMethod> zero = new ArrayList<>();
+        for (CompiledMethod m : mains) {
+            if (m.paramTypes.isEmpty()) zero.add(m);
+        }
+        if (zero.isEmpty()) {
+            throw new RuntimeException("No int main()");
+        }
+        boolean hasInt = false;
+        boolean hasVoid = false;
+        CompiledMethod intMain = null;
+        for (CompiledMethod m : zero) {
+            if ("int".equals(m.returnType)) {
+                hasInt = true;
+                intMain = m;
+            }
+            if ("void".equals(m.returnType)) {
+                hasVoid = true;
+            }
+        }
+        if (hasInt && hasVoid) {
+            throw new RuntimeException("Ambiguous main");
+        }
+        if (!hasInt) {
+            throw new RuntimeException("No int main()");
+        }
+        return intMain;
+    }
+
+    // -------------------------------------------------------------------------
+    // block / statement
+    // -------------------------------------------------------------------------
+
     @Override
     public Object visitBlock(MiniJavaParser.BlockContext ctx) {
-        // 进入新作用域
         Map<String, Object> newScope = new LinkedHashMap<>();
         scopeStack.add(newScope);
         Map<String, String> newTypes = new LinkedHashMap<>();
         typeStack.add(newTypes);
         Object result = null;
         RuntimeException pending = null;
-        boolean shouldPrint = true;
         try {
-            // 遍历访问block中的所有blockStatement
-            for (var blockStatement : ctx.blockStatement()) result = visit(blockStatement);
+            for (MiniJavaParser.BlockStatementContext bs : ctx.blockStatement()) {
+                result = visit(bs);
+            }
         } catch (RuntimeException e) {
-            // break/continue 等控制流需要先完成作用域清理并打印；
-            // 运行时错误不应额外打印“未正常退出”的作用域
             pending = e;
-            if (!(e instanceof BreakSignal) && !(e instanceof ContinueSignal)) shouldPrint = false;
+            if (!(e instanceof BreakSignal) && !(e instanceof ContinueSignal) && !(e instanceof ReturnSignal)) {
+                throw e;
+            }
         } finally {
-            // 退出作用域（按“层级”打印：同一层级可能出现多次）
-            int level = scopeStack.size() - 1;
-            Map<String, Object> scopeToPrint = scopeStack.remove(scopeStack.size() - 1);
-            Map<String, String> typesToPrint = typeStack.remove(typeStack.size() - 1);
-            if (shouldPrint) printScope(level, scopeToPrint, typesToPrint);
+            scopeStack.remove(scopeStack.size() - 1);
+            typeStack.remove(typeStack.size() - 1);
         }
-
         if (pending != null) throw pending;
         return result;
     }
-    
+
     @Override
     public Object visitBlockStatement(MiniJavaParser.BlockStatementContext ctx) {
-        // 处理局部变量声明
         if (ctx.localVariableDeclaration() != null) {
             return visit(ctx.localVariableDeclaration());
         }
-        // 处理语句
         return visit(ctx.statement());
     }
-    
+
     @Override
     public Object visitLocalVariableDeclaration(MiniJavaParser.LocalVariableDeclarationContext ctx) {
-        String type = ctx.primitiveType().getText();
-        String variableName = ctx.identifier().getText();
-        Object value = null;
-        
-        if (ctx.expression() != null) {
-            value = visit(ctx.expression());
-        } else {
-            value = visit(ctx.primitiveType());
+        if (ctx.VAR() != null) {
+            String name = ctx.identifier().getText();
+            MiniJavaParser.ExpressionContext init = ctx.expression();
+            String inferred = inferExprType(init, InferenceMode.VAR_INIT);
+            if (NULL_T.equals(inferred)) {
+                throw new RuntimeException("var cannot infer from null");
+            }
+            Object value = visit(init);
+            value = coerceValueToType(inferred, value);
+            Map<String, Object> scope = scopeStack.get(scopeStack.size() - 1);
+            if (scope.containsKey(name)) {
+                throw new RuntimeException("Duplicate declaration: " + name);
+            }
+            scope.put(name, value);
+            typeStack.get(typeStack.size() - 1).put(name, inferred);
+            return value;
         }
-
-        value = coerceValueToType(type, value);
-        
-        // Note 1: 同一作用域重复声明报错
+        String fullType = typeTypeToString(ctx.typeType());
+        MiniJavaParser.VariableDeclaratorContext vd = ctx.variableDeclarator();
+        String variableName = vd.identifier().getText();
+        Object value = defaultValueForType(fullType);
+        if (vd.variableInitializer() != null) {
+            expectedDeclType.push(fullType);
+            try {
+                value = visit(vd.variableInitializer());
+            } finally {
+                expectedDeclType.pop();
+            }
+            value = coerceValueToType(fullType, value);
+        }
         Map<String, Object> currentScope = scopeStack.get(scopeStack.size() - 1);
         if (currentScope.containsKey(variableName)) {
-            throw new RuntimeException("Duplicate declaration in same scope: " + variableName);
+            throw new RuntimeException("Duplicate declaration: " + variableName);
         }
-
-        // 存储变量到当前作用域
         currentScope.put(variableName, value);
-        // 存储变量类型
-        Map<String, String> currentTypes = typeStack.get(typeStack.size() - 1);
-        currentTypes.put(variableName, type);
-        
+        typeStack.get(typeStack.size() - 1).put(variableName, fullType);
         return value;
     }
-    
+
+    @Override
+    public Object visitVariableInitializer(MiniJavaParser.VariableInitializerContext ctx) {
+        if (ctx.arrayInitializer() != null) {
+            return visitArrayInitializer(ctx.arrayInitializer());
+        }
+        return visit(ctx.expression());
+    }
+
+    @Override
+    public Object visitArrayInitializer(MiniJavaParser.ArrayInitializerContext ctx) {
+        String expect = expectedDeclType.peek();
+        if (expect == null) {
+            throw new RuntimeException("Array initializer without context type");
+        }
+        return buildArrayFromInitializer(expect, ctx);
+    }
+
     @Override
     public Object visitStatement(MiniJavaParser.StatementContext ctx) {
-        // 空语句 ;
-        if (ctx.getToken(MiniJavaParser.SEMI, 0) != null && ctx.getChildCount() == 1) return null;
-        // break / continue
+        if (ctx.getToken(MiniJavaParser.SEMI, 0) != null && ctx.getChildCount() == 1) {
+            return null;
+        }
         if (ctx.getToken(MiniJavaParser.BREAK, 0) != null) {
-            if (loopDepth <= 0) throw new RuntimeException("break used outside loop");
+            if (loopDepth <= 0) throw new RuntimeException("break outside loop");
             throw new BreakSignal();
         }
         if (ctx.getToken(MiniJavaParser.CONTINUE, 0) != null) {
-            if (loopDepth <= 0) throw new RuntimeException("continue used outside loop");
+            if (loopDepth <= 0) throw new RuntimeException("continue outside loop");
             throw new ContinueSignal();
         }
-        // 处理表达式语句
-        if (ctx.expression() != null) return visit(ctx.expression());
-        // 处理 if 语句（必须按条件选择分支，不能 visitChildren）
-        if (ctx.getToken(MiniJavaParser.IF, 0) != null) {
-            Object cond = visit(ctx.parExpression().expression());
-            if (!(cond instanceof Boolean)) throw new RuntimeException("Invalid type for if condition: expected boolean");
-            if ((Boolean) cond) return visit(ctx.statement(0)); 
-            else {
-                // 有 else 分支时 statement(1) 存在
-                if (ctx.statement().size() > 1) return visit(ctx.statement(1));
-                return null;
+        if (ctx.getToken(MiniJavaParser.RETURN, 0) != null) {
+            String rt = currentReturnType.peek();
+            if ("void".equals(rt)) {
+                if (ctx.expression() != null) {
+                    throw new RuntimeException("void return with value");
+                }
+                throw new ReturnSignal(VOID_RETURN);
+            } else {
+                if (ctx.expression() == null) {
+                    throw new RuntimeException("missing return value");
+                }
+                Object v = visit(ctx.expression());
+                v = coerceForReturn(rt, ctx.expression(), v);
+                throw new ReturnSignal(v);
             }
         }
-        // 处理for循环语句
+        if (ctx.expression() != null) {
+            return visit(ctx.expression());
+        }
+        if (ctx.getToken(MiniJavaParser.IF, 0) != null) {
+            Object cond = visit(ctx.parExpression().expression());
+            if (!(cond instanceof Boolean)) {
+                throw new RuntimeException("if condition must be boolean");
+            }
+            if ((Boolean) cond) {
+                return visit(ctx.statement(0));
+            }
+            if (ctx.statement().size() > 1) {
+                return visit(ctx.statement(1));
+            }
+            return null;
+        }
         if (ctx.getToken(MiniJavaParser.FOR, 0) != null) {
-            // for 语句自身引入一层作用域：forInit 声明的变量属于这一层
             Map<String, Object> forScope = new LinkedHashMap<>();
             scopeStack.add(forScope);
             Map<String, String> forTypes = new LinkedHashMap<>();
             typeStack.add(forTypes);
-
-            boolean completedNormally = false;
             try {
                 MiniJavaParser.ForControlContext forControl = ctx.forControl();
-                if (forControl != null) visit(forControl); 
-                else {
-                    // 如果没有 forControl，则作为死循环处理
+                if (forControl != null) {
+                    visit(forControl);
+                } else {
                     MiniJavaParser.StatementContext body = ctx.statement(0);
                     loopDepth++;
                     try {
@@ -173,123 +319,230 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                             try {
                                 if (body != null) visit(body);
                             } catch (ContinueSignal ignored) {
-                            } catch (BreakSignal ignored) { break; }
+                            } catch (BreakSignal ignored) {
+                                break;
+                            }
                         }
                     } finally {
                         loopDepth--;
                     }
                 }
-                completedNormally = true;
             } finally {
-                int level = scopeStack.size() - 1;
-                Map<String, Object> scopeToPrint = scopeStack.remove(scopeStack.size() - 1);
-                Map<String, String> typesToPrint = typeStack.remove(typeStack.size() - 1);
-                if (completedNormally) {
-                    printScope(level, scopeToPrint, typesToPrint);
-                }
+                scopeStack.remove(scopeStack.size() - 1);
+                typeStack.remove(typeStack.size() - 1);
             }
             return null;
         }
-        // 处理while循环语句
         if (ctx.getToken(MiniJavaParser.WHILE, 0) != null) {
             MiniJavaParser.ParExpressionContext parExpr = ctx.parExpression();
             MiniJavaParser.StatementContext body = ctx.statement(0);
             loopDepth++;
             try {
                 while (true) {
-                    Object condition = (parExpr == null) ? null : visit(parExpr.expression());
-                    if (!(condition instanceof Boolean) || !((Boolean) condition)) break;
+                    Object condition = parExpr == null ? null : visit(parExpr.expression());
+                    if (!(condition instanceof Boolean) || !((Boolean) condition)) {
+                        break;
+                    }
                     try {
                         if (body != null) visit(body);
                     } catch (ContinueSignal ignored) {
-                    } catch (BreakSignal ignored) { break; }
+                    } catch (BreakSignal ignored) {
+                        break;
+                    }
                 }
             } finally {
                 loopDepth--;
             }
             return null;
         }
-        // 处理其他类型的语句
         return visitChildren(ctx);
     }
-    
+
     @Override
     public Object visitForControl(MiniJavaParser.ForControlContext ctx) {
-        // 从父节点提取循环体
         MiniJavaParser.StatementContext body = ((MiniJavaParser.StatementContext) ctx.getParent()).statement(0);
-
-        // 1. 访问for循环初始化部分
-        if (ctx.forInit() != null) visit(ctx.forInit());
-
+        if (ctx.forInit() != null) {
+            visit(ctx.forInit());
+        }
         loopDepth++;
         try {
             while (true) {
-                // 2. 访问for循环条件部分
                 if (ctx.expression() != null) {
                     Object condition = visit(ctx.expression());
-                    if (!(condition instanceof Boolean) || !((Boolean) condition)) break;
+                    if (!(condition instanceof Boolean) || !((Boolean) condition)) {
+                        break;
+                    }
                 }
-
-                // 3. 执行循环体
-                try { if (body != null) visit(body); }
-                catch (ContinueSignal ignored) {}   // continue: 跳过本次循环体，进入更新表达式
-                catch (BreakSignal ignored) { break; }     // break: 跳出循环
-
-                // 4. 访问for循环更新部分
-                if (ctx.expressionList() != null) visit(ctx.expressionList());
+                try {
+                    if (body != null) visit(body);
+                } catch (ContinueSignal ignored) {
+                } catch (BreakSignal ignored) {
+                    break;
+                }
+                if (ctx.expressionList() != null) {
+                    visit(ctx.expressionList());
+                }
             }
         } finally {
             loopDepth--;
         }
         return null;
     }
-    
-    @Override
-    public Object visitParExpression(MiniJavaParser.ParExpressionContext ctx) {
-        // 访问括号中的表达式
-        return visit(ctx.expression());
-    }
-    
+
     @Override
     public Object visitForInit(MiniJavaParser.ForInitContext ctx) {
-        // 访问for循环初始化部分的所有子节点
         return visitChildren(ctx);
     }
-    
+
+    @Override
+    public Object visitParExpression(MiniJavaParser.ParExpressionContext ctx) {
+        return visit(ctx.expression());
+    }
+
     @Override
     public Object visitExpressionList(MiniJavaParser.ExpressionListContext ctx) {
         Object result = null;
-        // 遍历访问所有表达式，返回最后一个表达式的结果
-        for (var expr : ctx.expression()) {
-            result = visit(expr);
+        for (MiniJavaParser.ExpressionContext e : ctx.expression()) {
+            result = visit(e);
         }
         return result;
     }
 
+    // -------------------------------------------------------------------------
+    // method call / creator / type
+    // -------------------------------------------------------------------------
+
     @Override
-    public Object visitIdentifier(MiniJavaParser.IdentifierContext ctx) {
-        String name = ctx.getText();
-        // 从作用域栈中查找变量，从当前作用域开始向上查找
-        for (int i = scopeStack.size() - 1; i >= 0; i--) {
-            if (scopeStack.get(i).containsKey(name)) {
-                return scopeStack.get(i).get(name);
-            }
+    public Object visitMethodCall(MiniJavaParser.MethodCallContext ctx) {
+        String name = ctx.identifier().getText();
+        List<MiniJavaParser.ExpressionContext> argExprs = new ArrayList<>();
+        MiniJavaParser.ArgumentsContext ac = ctx.arguments();
+        if (ac != null && ac.expressionList() != null) {
+            argExprs.addAll(ac.expressionList().expression());
         }
-        // 如果找不到变量，说明使用了未声明的变量，应该报错
-        throw new RuntimeException("Undeclared variable: " + name);
+        if (isBuiltin(name)) {
+            return dispatchBuiltin(name, argExprs);
+        }
+        List<String> argTypes = new ArrayList<>();
+        for (MiniJavaParser.ExpressionContext e : argExprs) {
+            argTypes.add(inferExprType(e, InferenceMode.ARGUMENT));
+        }
+        CompiledMethod target = resolveOverload(name, argTypes);
+        List<Object> evalArgs = new ArrayList<>();
+        for (MiniJavaParser.ExpressionContext e : argExprs) {
+            evalArgs.add(visit(e));
+        }
+        for (int i = 0; i < evalArgs.size(); i++) {
+            evalArgs.set(i, coerceArgToParam(target.paramTypes.get(i), evalArgs.get(i)));
+        }
+        return invokeUserMethod(target, evalArgs);
     }
 
-    //****************************** 
-    //********** 检查过的 ***********
-    //******************************  
+    @Override
+    public Object visitTypeType(MiniJavaParser.TypeTypeContext ctx) {
+        return defaultValueForType(typeTypeToString(ctx));
+    }
+
+    @Override
+    public Object visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
+        if (ctx.INT() != null) return 0;
+        if (ctx.CHAR() != null) return (char) 0;
+        if (ctx.BOOLEAN() != null) return false;
+        if (ctx.STRING() != null) return "";
+        throw new RuntimeException("unknown primitive");
+    }
+
+    // -------------------------------------------------------------------------
+    // expression
+    // -------------------------------------------------------------------------
+
+    @Override
+    public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
+        if (ctx.bop != null) {
+            return visitBinaryOrAssign(ctx);
+        }
+        if (ctx.methodCall() != null) {
+            return visit(ctx.methodCall());
+        }
+        if (ctx.NEW() != null) {
+            return visit(ctx.creator());
+        }
+        if (isArraySubscript(ctx)) {
+            return readArrayAccess(ctx);
+        }
+        if (ctx.prefix != null) {
+            return visitPrefix(ctx);
+        }
+        if (ctx.postfix != null) {
+            return visitPostfix(ctx);
+        }
+        if (ctx.LPAREN() != null && ctx.typeType() != null) {
+            Object operand = visit(ctx.expression(0));
+            return evaluateTypeCast(operand, ctx.typeType());
+        }
+        if (ctx.primary() != null) {
+            return visit(ctx.primary());
+        }
+        return visitChildren(ctx);
+    }
+
+    private Object visitBinaryOrAssign(MiniJavaParser.ExpressionContext ctx) {
+        String op = ctx.bop.getText();
+        if (ctx.bop.getType() == MiniJavaParser.QUESTION) {
+            Object condition = visit(ctx.expression(0));
+            return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
+        }
+        if ("and".equals(op) || "or".equals(op)) {
+            Object left = visit(ctx.expression(0));
+            return evaluateLogicalOperatorWithShortCircuit(left, ctx.expression(1), op);
+        }
+        Object left = visit(ctx.expression(0));
+        Object right = visit(ctx.expression(1));
+        Object result = evaluateBinaryOperator(left, right, op);
+        if (isAssignmentOperator(op)) {
+            MiniJavaParser.ExpressionContext lhs = ctx.expression(0);
+            String declaredType = resolveLValueType(lhs);
+            validateAssignmentOperatorForType(op, declaredType);
+            Object coerced = coerceValueToType(declaredType, result);
+            assignToLValue(lhs, coerced);
+            return coerced;
+        }
+        return result;
+    }
+
+    private Object visitPrefix(MiniJavaParser.ExpressionContext ctx) {
+        String op = ctx.prefix.getText();
+        if ("++".equals(op) || "--".equals(op)) {
+            MiniJavaParser.ExpressionContext target = ctx.expression(0);
+            if (target.primary() != null && target.primary().identifier() != null) {
+                String variableName = target.primary().identifier().getText();
+                return applyIncDec(variableName, op, true);
+            }
+            throw new RuntimeException("Invalid use of " + op);
+        }
+        Object operand = visit(ctx.expression(0));
+        return evaluateUnaryPrefixOperator(operand, op);
+    }
+
+    private Object visitPostfix(MiniJavaParser.ExpressionContext ctx) {
+        String op = ctx.postfix.getText();
+        MiniJavaParser.ExpressionContext target = ctx.expression(0);
+        if (target.primary() != null && target.primary().identifier() != null) {
+            String variableName = target.primary().identifier().getText();
+            return applyIncDec(variableName, op, false);
+        }
+        throw new RuntimeException("Invalid use of " + op);
+    }
 
     @Override
     public Object visitPrimary(MiniJavaParser.PrimaryContext ctx) {
         if (ctx.expression() != null) {
             return visit(ctx.expression());
-        } else if (ctx.literal() != null) {
+        }
+        if (ctx.literal() != null) {
             return visit(ctx.literal());
-        } else if (ctx.identifier() != null) {
+        }
+        if (ctx.identifier() != null) {
             return visit(ctx.identifier());
         }
         return null;
@@ -297,13 +550,19 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
 
     @Override
     public Object visitLiteral(MiniJavaParser.LiteralContext ctx) {
+        if (ctx.NULL_LITERAL() != null) {
+            return null;
+        }
         if (ctx.DECIMAL_LITERAL() != null) {
             return Integer.parseInt(ctx.DECIMAL_LITERAL().getText().replace("_", ""));
-        } else if (ctx.BOOL_LITERAL() != null) {
+        }
+        if (ctx.BOOL_LITERAL() != null) {
             return "true".equals(ctx.getText());
-        } else if (ctx.CHAR_LITERAL() != null) {
+        }
+        if (ctx.CHAR_LITERAL() != null) {
             return ctx.CHAR_LITERAL().getText().charAt(1);
-        } else if (ctx.STRING_LITERAL() != null) {
+        }
+        if (ctx.STRING_LITERAL() != null) {
             String lit = ctx.getText();
             return lit.substring(1, lit.length() - 1);
         }
@@ -311,176 +570,1053 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     }
 
     @Override
-    public Object visitExpression(MiniJavaParser.ExpressionContext ctx) {
-        try {
-            if (ctx.bop != null) {
-                // 运算符
-                String op = ctx.bop.getText();
-                if (ctx.bop.getType() == MiniJavaParser.QUESTION) {
-                    Object condition = visit(ctx.expression(0));
-                    return evaluateTernaryOperator(condition, ctx.expression(1), ctx.expression(2));
-                } else if (op.equals("and") || op.equals("or")) {
-                    // 逻辑运算符
-                    Object left = visit(ctx.expression(0));
-                    return evaluateLogicalOperatorWithShortCircuit(left, ctx.expression(1), op);
-                } else {
-                    // 二元运算符
-                    Object left = visit(ctx.expression(0));
-                    Object right = visit(ctx.expression(1));
-                    Object result = evaluateBinaryOperator(left, right, op);
-                    
-                    // 处理赋值操作，更新变量值
-                    if (isAssignmentOperator(op)) {
-                        // Note 1/2: LHS 必须是标识符，且必须赋值给一个已存在变量
-                        String variableName = null;
-                        if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext leftExpr
-                                && leftExpr.primary() != null
-                                && leftExpr.primary().identifier() != null) {
-                            variableName = leftExpr.primary().identifier().getText();
-                        }
-                        if (variableName == null) {
-                            throw new RuntimeException("Invalid assignment: LHS must be an identifier");
-                        }
-
-                        String declaredType = getDeclaredType(variableName);
-                        if (declaredType == null) {
-                            throw new RuntimeException("Invalid assignment: undeclared variable " + variableName);
-                        }
-                        validateAssignmentOperatorForType(op, declaredType);
-
-                        Object coercedResult = coerceValueToType(declaredType, result);
-
-                        boolean updated = false;
-                        for (int i = scopeStack.size() - 1; i >= 0; i--) {
-                            if (scopeStack.get(i).containsKey(variableName)) {
-                                scopeStack.get(i).put(variableName, coercedResult);
-                                updated = true;
-                                break;
-                            }
-                        }
-                        if (!updated) {
-                            throw new RuntimeException("Invalid assignment: can only assign to a variable");
-                        }
-
-                        // 赋值表达式的值是写回后的值
-                        result = coercedResult;
-                    }
-                    
-                    return result;
-                }
-            } else if (ctx.prefix != null) {
-                // 前缀运算符
-                String op = ctx.prefix.getText();
-                // 处理前缀自增/自减运算符
-                if (op.equals("++") || op.equals("--")) {
-                    // 检查左侧是否为标识符（变量）
-                    if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
-                        MiniJavaParser.ExpressionContext expr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
-                        if (expr.primary() != null && expr.primary().identifier() != null) {
-                            String variableName = expr.primary().identifier().getText();
-                            // 查找变量值
-                            Object value = null;
-                            int scopeIndex = -1;
-                            for (int i = scopeStack.size() - 1; i >= 0; i--) {
-                                if (scopeStack.get(i).containsKey(variableName)) {
-                                    value = scopeStack.get(i).get(variableName);
-                                    scopeIndex = i;
-                                    break;
-                                }
-                            }
-                            if (value != null && scopeIndex != -1) {
-                                // 处理前缀自增/自减运算符
-                                String declaredType = getDeclaredType(variableName);
-                                if (value instanceof Integer) {
-                                    int intValue = (Integer) value;
-                                    int newValue = op.equals("++") ? (intValue + 1) : (intValue - 1);
-                                    Object coerced = declaredType == null ? newValue : coerceValueToType(declaredType, newValue);
-                                    scopeStack.get(scopeIndex).put(variableName, coerced);
-                                    return coerced;
-                                }
-                                if (value instanceof Character c) {
-                                    int intValue = c.charValue();
-                                    int newValue = op.equals("++") ? (intValue + 1) : (intValue - 1);
-                                    Object coerced = declaredType == null ? (char) (newValue & 0xFF) : coerceValueToType(declaredType, newValue);
-                                    scopeStack.get(scopeIndex).put(variableName, coerced);
-                                    return coerced;
-                                }
-                            }
-                        }
-                    }
-                    // 如果不是变量，或者处理失败，抛出异常
-                    throw new RuntimeException("Invalid use of " + op + " operator: can only be applied to variables");
-                } else {
-                    // 其他前缀运算符
-                    Object operand = visit(ctx.expression(0));
-                    return evaluateUnaryPrefixOperator(operand, op);
-                }
-            } else if (ctx.postfix != null) {
-                // 后缀运算符
-                String op = ctx.postfix.getText();
-                // 检查左侧是否为标识符（变量）
-                if (ctx.expression(0) instanceof MiniJavaParser.ExpressionContext) {
-                    MiniJavaParser.ExpressionContext expr = (MiniJavaParser.ExpressionContext) ctx.expression(0);
-                    if (expr.primary() != null && expr.primary().identifier() != null) {
-                        String variableName = expr.primary().identifier().getText();
-                        // 查找变量值
-                        Object value = null;
-                        int scopeIndex = -1;
-                        for (int i = scopeStack.size() - 1; i >= 0; i--) {
-                            if (scopeStack.get(i).containsKey(variableName)) {
-                                value = scopeStack.get(i).get(variableName);
-                                scopeIndex = i;
-                                break;
-                            }
-                        }
-                        if (value != null && scopeIndex != -1) {
-                            // 处理后缀自增/自减运算符
-                            if (op.equals("++")) {
-                                String declaredType = getDeclaredType(variableName);
-                                if (value instanceof Integer) {
-                                    int intValue = (Integer) value;
-                                    Object coercedNew = declaredType == null ? (intValue + 1) : coerceValueToType(declaredType, intValue + 1);
-                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
-                                    return value; // 返回自增前的值
-                                }
-                                if (value instanceof Character c) {
-                                    int intValue = c.charValue();
-                                    Object coercedNew = declaredType == null ? (char) ((intValue + 1) & 0xFF) : coerceValueToType(declaredType, intValue + 1);
-                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
-                                    return value; // 返回自增前的值
-                                }
-                            } else if (op.equals("--")) {
-                                String declaredType = getDeclaredType(variableName);
-                                if (value instanceof Integer) {
-                                    int intValue = (Integer) value;
-                                    Object coercedNew = declaredType == null ? (intValue - 1) : coerceValueToType(declaredType, intValue - 1);
-                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
-                                    return value; // 返回自减前的值
-                                }
-                                if (value instanceof Character c) {
-                                    int intValue = c.charValue();
-                                    Object coercedNew = declaredType == null ? (char) ((intValue - 1) & 0xFF) : coerceValueToType(declaredType, intValue - 1);
-                                    scopeStack.get(scopeIndex).put(variableName, coercedNew);
-                                    return value; // 返回自减前的值
-                                }
-                            }
-                        }
-                    }
-                }
-                // 如果不是变量，或者处理失败，抛出异常
-                throw new RuntimeException("Invalid use of " + op + " operator: can only be applied to variables");
-            } else if (ctx.primitiveType() != null) {
-                // 类型转换
-                Object operand = visit(ctx.expression(0));
-                return evaluateTypeCast(operand, ctx.primitiveType());
+    public Object visitIdentifier(MiniJavaParser.IdentifierContext ctx) {
+        String name = ctx.getText();
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            if (scopeStack.get(i).containsKey(name)) {
+                return scopeStack.get(i).get(name);
             }
-            return visitChildren(ctx);
-        } catch (Exception e) {
-            System.out.println("Process exits with 34.");
-            System.exit(34);
-            return null; // This line is unreachable, but required for compilation
+        }
+        throw new RuntimeException("Undeclared variable: " + name);
+    }
+
+    // -------------------------------------------------------------------------
+    // builtins
+    // -------------------------------------------------------------------------
+
+    private static boolean isBuiltin(String name) {
+        return switch (name) {
+            case "print", "println", "assert", "length", "to_char_array", "to_string", "atoi", "itoa" -> true;
+            default -> false;
+        };
+    }
+
+    private Object dispatchBuiltin(String name, List<MiniJavaParser.ExpressionContext> args) {
+        return switch (name) {
+            case "print" -> {
+                if (args.size() != 1) throw new RuntimeException("print arity");
+                printArg(visit(args.get(0)));
+                yield null;
+            }
+            case "println" -> {
+                if (args.isEmpty()) {
+                    System.out.println();
+                } else if (args.size() == 1) {
+                    printArg(visit(args.get(0)));
+                    System.out.println();
+                } else {
+                    throw new RuntimeException("println arity");
+                }
+                yield null;
+            }
+            case "assert" -> {
+                if (args.size() != 1) throw new RuntimeException("assert arity");
+                Object v = visit(args.get(0));
+                if (!(v instanceof Boolean)) {
+                    throw new RuntimeException("assert needs boolean");
+                }
+                if (!(Boolean) v) {
+                    exitAssertFail();
+                }
+                yield null;
+            }
+            case "length" -> {
+                if (args.size() != 1) throw new RuntimeException("length arity");
+                Object v = visit(args.get(0));
+                if (v == null) {
+                    throw new RuntimeException("null length");
+                }
+                if (v instanceof String s) {
+                    yield s.length();
+                }
+                if (v instanceof int[] a) {
+                    yield a.length;
+                }
+                if (v instanceof char[] c) {
+                    yield c.length;
+                }
+                if (v instanceof boolean[] b) {
+                    yield b.length;
+                }
+                if (v instanceof String[] sa) {
+                    yield sa.length;
+                }
+                if (v instanceof Object[] oa) {
+                    yield oa.length;
+                }
+                throw new RuntimeException("length bad type");
+            }
+            case "to_char_array" -> {
+                if (args.size() != 1) throw new RuntimeException("to_char_array arity");
+                Object v = visit(args.get(0));
+                if (!(v instanceof String s)) {
+                    throw new RuntimeException("to_char_array needs string");
+                }
+                char[] out = new char[s.length()];
+                s.getChars(0, s.length(), out, 0);
+                yield out;
+            }
+            case "to_string" -> {
+                if (args.size() != 1) throw new RuntimeException("to_string arity");
+                Object v = visit(args.get(0));
+                if (v == null) {
+                    throw new RuntimeException("null to_string");
+                }
+                if (!(v instanceof char[] c)) {
+                    throw new RuntimeException("to_string needs char[]");
+                }
+                yield new String(c);
+            }
+            case "atoi" -> {
+                if (args.size() != 1) throw new RuntimeException("atoi arity");
+                Object v = visit(args.get(0));
+                if (!(v instanceof String s)) {
+                    throw new RuntimeException("atoi needs string");
+                }
+                yield Integer.parseInt(s);
+            }
+            case "itoa" -> {
+                if (args.size() != 1) throw new RuntimeException("itoa arity");
+                Object v = visit(args.get(0));
+                int n = toInt(v, "itoa");
+                yield String.valueOf(n);
+            }
+            default -> throw new RuntimeException("unknown builtin");
+        };
+    }
+
+    private void printArg(Object v) {
+        System.out.print(formatPrintValue(v));
+    }
+
+    private String formatPrintValue(Object v) {
+        if (v == null) {
+            return "null";
+        }
+        if (v instanceof String s) {
+            return s;
+        }
+        if (v instanceof Character c) {
+            return String.valueOf(c);
+        }
+        if (v instanceof Integer i) {
+            return String.valueOf(i);
+        }
+        if (v instanceof Boolean b) {
+            return String.valueOf(b);
+        }
+        if (v instanceof int[] a) {
+            return formatIntArray(a);
+        }
+        if (v instanceof boolean[] b) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < b.length; i++) {
+                if (i > 0) {
+                    sb.append(", ");
+                }
+                sb.append(b[i]);
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        if (v instanceof char[] c) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < c.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(c[i]);
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        if (v instanceof Object[] oa) {
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < oa.length; i++) {
+                if (i > 0) sb.append(", ");
+                sb.append(formatPrintValue(oa[i]));
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        return String.valueOf(v);
+    }
+
+    private static String formatIntArray(int[] a) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < a.length; i++) {
+            if (i > 0) sb.append(", ");
+            sb.append(a[i]);
+        }
+        sb.append("]");
+        return sb.toString();
+    }
+
+    // -------------------------------------------------------------------------
+    // overload & invocation
+    // -------------------------------------------------------------------------
+
+    private CompiledMethod resolveOverload(String name, List<String> argTypes) {
+        List<CompiledMethod> cands = methods.get(name);
+        if (cands == null || cands.isEmpty()) {
+            throw new RuntimeException("No method: " + name);
+        }
+        List<CompiledMethod> ok = new ArrayList<>();
+        List<Integer> costs = new ArrayList<>();
+        for (CompiledMethod m : cands) {
+            if (m.paramTypes.size() != argTypes.size()) {
+                continue;
+            }
+            int sum = 0;
+            boolean bad = false;
+            for (int i = 0; i < argTypes.size(); i++) {
+                int c = conversionCost(m.paramTypes.get(i), argTypes.get(i));
+                if (c < 0) {
+                    bad = true;
+                    break;
+                }
+                sum += c;
+            }
+            if (!bad) {
+                ok.add(m);
+                costs.add(sum);
+            }
+        }
+        if (ok.isEmpty()) {
+            throw new RuntimeException("No matching overload");
+        }
+        int best = costs.stream().mapToInt(Integer::intValue).min().orElseThrow();
+        List<CompiledMethod> bestList = new ArrayList<>();
+        for (int i = 0; i < ok.size(); i++) {
+            if (costs.get(i) == best) {
+                bestList.add(ok.get(i));
+            }
+        }
+        if (bestList.size() != 1) {
+            throw new RuntimeException("Ambiguous overload");
+        }
+        return bestList.get(0);
+    }
+
+    /**
+     * 返回值：每个参数隐式转换次数之和；不兼容返回 -1。
+     */
+    private static int conversionCost(String paramType, String argType) {
+        if (paramType.equals(argType)) {
+            return 0;
+        }
+        if ("int".equals(paramType) && "char".equals(argType)) {
+            return 1;
+        }
+        if (paramType.endsWith("[]") && NULL_T.equals(argType)) {
+            return 1;
+        }
+        return -1;
+    }
+
+    private Object invokeUserMethod(CompiledMethod m, List<Object> args) {
+        if (m.paramTypes.size() != args.size()) {
+            throw new RuntimeException("bad arg count");
+        }
+        Map<String, Object> pScope = new LinkedHashMap<>();
+        Map<String, String> pTypes = new LinkedHashMap<>();
+        for (int i = 0; i < args.size(); i++) {
+            pScope.put(m.paramNames.get(i), args.get(i));
+            pTypes.put(m.paramNames.get(i), m.paramTypes.get(i));
+        }
+        scopeStack.add(pScope);
+        typeStack.add(pTypes);
+        currentReturnType.push(m.returnType);
+        try {
+            visit(m.body);
+            if (!"void".equals(m.returnType)) {
+                throw new RuntimeException("missing return");
+            }
+            return null;
+        } catch (ReturnSignal rs) {
+            if ("void".equals(m.returnType)) {
+                if (rs.value != VOID_RETURN) {
+                    throw new RuntimeException("void return with value");
+                }
+                return null;
+            }
+            return coerceForReturnValue(m.returnType, rs.value);
+        } finally {
+            currentReturnType.pop();
+            scopeStack.remove(scopeStack.size() - 1);
+            typeStack.remove(typeStack.size() - 1);
         }
     }
+
+    private Object coerceForReturnValue(String returnType, Object v) {
+        return coerceForReturn(returnType, null, v);
+    }
+
+    private Object coerceForReturn(String returnType, MiniJavaParser.ExpressionContext exprCtx, Object v) {
+        if ("int".equals(returnType)) {
+            if (v instanceof Integer) {
+                return v;
+            }
+            if (v instanceof Character) {
+                return toInt(v, "return");
+            }
+            throw new RuntimeException("bad return type");
+        }
+        if ("char".equals(returnType)) {
+            if (v instanceof Character) {
+                return v;
+            }
+            if (v instanceof Integer i) {
+                if (i < -128 || i > 127) {
+                    throw new RuntimeException("return int out of char range");
+                }
+                return (char) (i & 0xFF);
+            }
+            throw new RuntimeException("bad return type");
+        }
+        if (returnType.endsWith("[]") || "string".equals(returnType) || "boolean".equals(returnType)) {
+            return coerceValueToType(returnType, v);
+        }
+        throw new RuntimeException("bad return");
+    }
+
+    private Object coerceArgToParam(String paramType, Object value) {
+        if ("int".equals(paramType)) {
+            if (value instanceof Integer) {
+                return value;
+            }
+            if (value instanceof Character) {
+                return toInt(value, "arg");
+            }
+            throw new RuntimeException("arg to int");
+        }
+        if ("char".equals(paramType)) {
+            if (value instanceof Character) {
+                return value;
+            }
+            throw new RuntimeException("arg to char");
+        }
+        if (paramType.endsWith("[]")) {
+            if (value == null) {
+                return null;
+            }
+            if (!arrayValueAssignable(paramType, value)) {
+                throw new RuntimeException("arg array mismatch");
+            }
+            return value;
+        }
+        if ("string".equals(paramType) && value instanceof String) {
+            return value;
+        }
+        if ("boolean".equals(paramType) && value instanceof Boolean) {
+            return value;
+        }
+        throw new RuntimeException("coerce arg");
+    }
+
+    // -------------------------------------------------------------------------
+    // array helpers
+    // -------------------------------------------------------------------------
+
+    private static boolean isArraySubscript(MiniJavaParser.ExpressionContext ctx) {
+        return ctx.LBRACK() != null
+                && ctx.expression().size() == 2
+                && ctx.bop == null && ctx.prefix == null && ctx.postfix == null
+                && ctx.methodCall() == null
+                && ctx.NEW() == null
+                && ctx.typeType() == null;
+    }
+
+    /**
+     * char[] 字面量中 visit 得到 Integer 时：仅允许十进制字面量经一元 {@code +}、括号或一元 {@code -}
+     * 作用于字面量（最终值在 byte 范围内）；禁止一般 int 表达式与显式强转形式（如 {@code (int)5}）。
+     * {@code (char)} 等强转在运行期得到 Character，不经过此检查。与 TE / SpecialCase 一致。
+     */
+    private static boolean allowedCharArrayInitializerElementExpression(MiniJavaParser.ExpressionContext ctx) {
+        MiniJavaParser.ExpressionContext e = unwrapParenExpression(ctx);
+        if (e == null) {
+            return false;
+        }
+        if (e.prefix != null && e.expression(0) != null) {
+            String op = e.prefix.getText();
+            if ("+".equals(op)) {
+                return allowedCharArrayInitializerElementExpression(e.expression(0));
+            }
+            if ("-".equals(op)) {
+                MiniJavaParser.ExpressionContext inner = unwrapParenExpression(e.expression(0));
+                if (inner != null && inner.bop == null && inner.prefix == null && inner.postfix == null
+                        && inner.methodCall() == null && inner.NEW() == null && !isArraySubscript(inner)
+                        && inner.LPAREN() == null && inner.primary() != null && inner.primary().literal() != null
+                        && inner.primary().literal().DECIMAL_LITERAL() != null) {
+                    int raw = Integer.parseInt(
+                            inner.primary().literal().DECIMAL_LITERAL().getText().replace("_", ""));
+                    int signed = -raw;
+                    return signed >= -128 && signed <= 127;
+                }
+                return false;
+            }
+            return false;
+        }
+        if (e.bop != null || e.postfix != null || e.methodCall() != null || e.NEW() != null || isArraySubscript(e)) {
+            return false;
+        }
+        if (e.LPAREN() != null && e.typeType() != null) {
+            return false;
+        }
+        if (e.primary() != null && e.primary().literal() != null && e.primary().literal().DECIMAL_LITERAL() != null) {
+            int v = Integer.parseInt(e.primary().literal().DECIMAL_LITERAL().getText().replace("_", ""));
+            return v >= -128 && v <= 127;
+        }
+        return false;
+    }
+
+    private static MiniJavaParser.ExpressionContext unwrapParenExpression(MiniJavaParser.ExpressionContext ctx) {
+        MiniJavaParser.ExpressionContext cur = ctx;
+        while (cur != null && cur.primary() != null && cur.primary().expression() != null
+                && cur.primary().literal() == null && cur.primary().identifier() == null) {
+            cur = cur.primary().expression();
+        }
+        return cur;
+    }
+
+    private Object readArrayAccess(MiniJavaParser.ExpressionContext ctx) {
+        Object arr = visit(ctx.expression(0));
+        Object idxVal = visit(ctx.expression(1));
+        int idx = toInt(idxVal, "index");
+        if (arr == null) {
+            throw new RuntimeException("null array");
+        }
+        if (arr instanceof int[] a) {
+            if (idx < 0 || idx >= a.length) {
+                throw new RuntimeException("oob");
+            }
+            return a[idx];
+        }
+        if (arr instanceof char[] c) {
+            if (idx < 0 || idx >= c.length) {
+                throw new RuntimeException("oob");
+            }
+            return c[idx];
+        }
+        if (arr instanceof boolean[] b) {
+            if (idx < 0 || idx >= b.length) {
+                throw new RuntimeException("oob");
+            }
+            return b[idx];
+        }
+        if (arr instanceof String[] sa) {
+            if (idx < 0 || idx >= sa.length) {
+                throw new RuntimeException("oob");
+            }
+            return sa[idx];
+        }
+        if (arr instanceof Object[] oa) {
+            if (idx < 0 || idx >= oa.length) {
+                throw new RuntimeException("oob");
+            }
+            return oa[idx];
+        }
+        throw new RuntimeException("not array");
+    }
+
+    private void writeArrayAccess(MiniJavaParser.ExpressionContext ctx, Object value) {
+        Object arr = visit(ctx.expression(0));
+        Object idxVal = visit(ctx.expression(1));
+        int idx = toInt(idxVal, "index");
+        if (arr == null) {
+            throw new RuntimeException("null array");
+        }
+        String elemT = elementTypeOfArrayExpr(ctx.expression(0));
+        Object coerced = coerceValueToType(elemT, value);
+        if (arr instanceof int[] a) {
+            if (idx < 0 || idx >= a.length) {
+                throw new RuntimeException("oob");
+            }
+            a[idx] = (Integer) coerced;
+            return;
+        }
+        if (arr instanceof char[] c) {
+            if (idx < 0 || idx >= c.length) {
+                throw new RuntimeException("oob");
+            }
+            c[idx] = (Character) coerced;
+            return;
+        }
+        if (arr instanceof boolean[] b) {
+            if (idx < 0 || idx >= b.length) {
+                throw new RuntimeException("oob");
+            }
+            b[idx] = (Boolean) coerced;
+            return;
+        }
+        if (arr instanceof String[] sa) {
+            if (idx < 0 || idx >= sa.length) {
+                throw new RuntimeException("oob");
+            }
+            sa[idx] = (String) coerced;
+            return;
+        }
+        if (arr instanceof Object[] oa) {
+            if (idx < 0 || idx >= oa.length) {
+                throw new RuntimeException("oob");
+            }
+            oa[idx] = coerced;
+            return;
+        }
+        throw new RuntimeException("not array");
+    }
+
+    private String elementTypeOfArrayExpr(MiniJavaParser.ExpressionContext arrExpr) {
+        String t = inferExprType(arrExpr, InferenceMode.GENERAL);
+        if (t == null || !t.endsWith("[]")) {
+            throw new RuntimeException("not array type");
+        }
+        return t.substring(0, t.length() - 2);
+    }
+
+    private Object buildArrayFromInitializer(String fullType, MiniJavaParser.ArrayInitializerContext ctx) {
+        List<MiniJavaParser.VariableInitializerContext> inits = ctx.variableInitializer();
+        if (!fullType.endsWith("[]")) {
+            throw new RuntimeException("not array type");
+        }
+        String inner = fullType.substring(0, fullType.length() - 2);
+        if (inner.endsWith("[]")) {
+            Object[] out = new Object[inits.size()];
+            for (int i = 0; i < inits.size(); i++) {
+                MiniJavaParser.VariableInitializerContext vi = inits.get(i);
+                if (vi.arrayInitializer() != null) {
+                    expectedDeclType.push(inner);
+                    try {
+                        out[i] = visit(vi.arrayInitializer());
+                    } finally {
+                        expectedDeclType.pop();
+                    }
+                } else {
+                    out[i] = visit(vi.expression());
+                    out[i] = coerceValueToType(inner, out[i]);
+                }
+            }
+            return out;
+        }
+        // 叶子维度
+        if ("int".equals(inner)) {
+            int[] out = new int[inits.size()];
+            for (int i = 0; i < inits.size(); i++) {
+                Object v = visitInitializerLeaf(inits.get(i));
+                out[i] = (Integer) coerceValueToType("int", v);
+            }
+            return out;
+        }
+        if ("char".equals(inner)) {
+            char[] out = new char[inits.size()];
+            for (int i = 0; i < inits.size(); i++) {
+                MiniJavaParser.VariableInitializerContext vi = inits.get(i);
+                if (vi.expression() == null) {
+                    throw new RuntimeException("char[] element must be expression");
+                }
+                MiniJavaParser.ExpressionContext ex = vi.expression();
+                Object v = visit(ex);
+                if (v instanceof Integer && !allowedCharArrayInitializerElementExpression(ex)) {
+                    throw new RuntimeException("int cannot implicitly convert to char in array init");
+                }
+                out[i] = (Character) coerceValueToType("char", v);
+            }
+            return out;
+        }
+        if ("boolean".equals(inner)) {
+            boolean[] out = new boolean[inits.size()];
+            for (int i = 0; i < inits.size(); i++) {
+                Object v = visitInitializerLeaf(inits.get(i));
+                out[i] = (Boolean) coerceValueToType("boolean", v);
+            }
+            return out;
+        }
+        if ("string".equals(inner)) {
+            String[] out = new String[inits.size()];
+            for (int i = 0; i < inits.size(); i++) {
+                Object v = visitInitializerLeaf(inits.get(i));
+                out[i] = (String) coerceValueToType("string", v);
+            }
+            return out;
+        }
+        throw new RuntimeException("unsupported array leaf");
+    }
+
+    private Object visitInitializerLeaf(MiniJavaParser.VariableInitializerContext vi) {
+        if (vi.arrayInitializer() != null) {
+            return visit(vi.arrayInitializer());
+        }
+        return visit(vi.expression());
+    }
+
+    @Override
+    public Object visitCreator(MiniJavaParser.CreatorContext ctx) {
+        String base = primitiveTypeToken(ctx.createdName().primitiveType());
+        MiniJavaParser.ArrayCreatorRestContext rest = ctx.arrayCreatorRest();
+        if (rest.arrayInitializer() != null) {
+            String full = arrayTypeName(base, rest.LBRACK().size());
+            expectedDeclType.push(full);
+            try {
+                return visit(rest.arrayInitializer());
+            } finally {
+                expectedDeclType.pop();
+            }
+        }
+        List<Integer> sizes = new ArrayList<>();
+        for (MiniJavaParser.ExpressionContext dim : rest.expression()) {
+            int n = toInt(visit(dim), "dim");
+            if (n < 0) {
+                throw new RuntimeException("negative array size");
+            }
+            sizes.add(n);
+        }
+        int trailing = rest.LBRACK().size() - rest.expression().size();
+        return allocateNewExprArray(base, sizes, trailing);
+    }
+
+    /**
+     * new int[d0]...[expr]...[]...[] ：无尾 [] 时用 Array.newInstance；否则用 Object[] 嵌套 + null 叶子。
+     */
+    private static Object allocateNewExprArray(String base, List<Integer> exprDims, int trailing) {
+        Class<?> comp = leafClassForArrayBase(base);
+        int[] ed = exprDims.stream().mapToInt(Integer::intValue).toArray();
+        if (ed.length == 0) {
+            throw new RuntimeException("bad new");
+        }
+        if (trailing == 0) {
+            return Array.newInstance(comp, ed);
+        }
+        return raggedNewArray(comp, ed, 0, trailing);
+    }
+
+    private static Class<?> leafClassForArrayBase(String base) {
+        return switch (base) {
+            case "int" -> int.class;
+            case "char" -> char.class;
+            case "boolean" -> boolean.class;
+            case "string" -> String.class;
+            default -> throw new RuntimeException("new array base");
+        };
+    }
+
+    private static Object raggedNewArray(Class<?> leaf, int[] expr, int pos, int trailing) {
+        if (pos < expr.length) {
+            int d = expr[pos];
+            boolean lastExpr = pos == expr.length - 1;
+            if (lastExpr && trailing == 0) {
+                return Array.newInstance(leaf, d);
+            }
+            Object[] out = new Object[d];
+            for (int i = 0; i < d; i++) {
+                if (lastExpr && trailing > 0) {
+                    out[i] = raggedNewArray(leaf, expr, pos + 1, trailing - 1);
+                } else {
+                    out[i] = raggedNewArray(leaf, expr, pos + 1, trailing);
+                }
+            }
+            return out;
+        }
+        return null;
+    }
+
+    private static int arrayRank(String t) {
+        int r = 0;
+        String s = t;
+        while (s.endsWith("[]")) {
+            r++;
+            s = s.substring(0, s.length() - 2);
+        }
+        return r;
+    }
+
+    private static String arrayBasePrimitive(String arrayDecl) {
+        String s = arrayDecl;
+        while (s.endsWith("[]")) {
+            s = s.substring(0, s.length() - 2);
+        }
+        return s;
+    }
+
+    private static boolean arrayValueAssignable(String declaredArrayType, Object v) {
+        String base = arrayBasePrimitive(declaredArrayType);
+        int rank = arrayRank(declaredArrayType);
+        if (rank == 1) {
+            return switch (base) {
+                case "int" -> v instanceof int[];
+                case "char" -> v instanceof char[];
+                case "boolean" -> v instanceof boolean[];
+                case "string" -> v instanceof String[];
+                default -> false;
+            };
+        }
+        if (v instanceof Object[]) {
+            return true;
+        }
+        Class<?> c = v.getClass();
+        if (!c.isArray()) {
+            return false;
+        }
+        int d = 0;
+        while (c.isArray()) {
+            d++;
+            c = c.getComponentType();
+        }
+        if (d != rank) {
+            return false;
+        }
+        return switch (base) {
+            case "int" -> c == int.class;
+            case "char" -> c == char.class;
+            case "boolean" -> c == boolean.class;
+            case "string" -> c == String.class;
+            default -> false;
+        };
+    }
+
+    // -------------------------------------------------------------------------
+    // types / inference
+    // -------------------------------------------------------------------------
+
+    private String inferExprType(MiniJavaParser.ExpressionContext ctx, InferenceMode mode) {
+        if (ctx.methodCall() != null) {
+            return inferMethodCallReturn(ctx.methodCall());
+        }
+        if (ctx.NEW() != null) {
+            return inferNewType(ctx.creator());
+        }
+        if (isArraySubscript(ctx)) {
+            String at = inferExprType(ctx.expression(0), InferenceMode.GENERAL);
+            if (at == null || !at.endsWith("[]")) {
+                throw new RuntimeException("subscript non-array");
+            }
+            return at.substring(0, at.length() - 2);
+        }
+        if (ctx.LPAREN() != null && ctx.typeType() != null) {
+            return typeTypeToString(ctx.typeType());
+        }
+        if (ctx.prefix != null) {
+            String op = ctx.prefix.getText();
+            if ("not".equals(op)) {
+                return "boolean";
+            }
+            return inferExprType(ctx.expression(0), mode);
+        }
+        if (ctx.postfix != null) {
+            return inferExprType(ctx.expression(0), mode);
+        }
+        if (ctx.bop != null) {
+            return inferBinaryExprType(ctx, mode);
+        }
+        if (ctx.primary() != null) {
+            return inferPrimaryType(ctx.primary(), mode);
+        }
+        return "int";
+    }
+
+    private String inferBinaryExprType(MiniJavaParser.ExpressionContext ctx, InferenceMode mode) {
+        String op = ctx.bop.getText();
+        if ("?".equals(op)) {
+            String t1 = inferExprType(ctx.expression(1), mode);
+            String t2 = inferExprType(ctx.expression(2), mode);
+            return mergeTernaryBranchTypes(t1, t2);
+        }
+        if ("and".equals(op) || "or".equals(op)) {
+            return "boolean";
+        }
+        if ("==".equals(op) || "!=".equals(op)) {
+            return "boolean";
+        }
+        if (isComparisonOp(op)) {
+            return "boolean";
+        }
+        if ("+".equals(op)) {
+            String t0 = inferExprType(ctx.expression(0), InferenceMode.GENERAL);
+            String t1 = inferExprType(ctx.expression(1), InferenceMode.GENERAL);
+            if ("string".equals(t0) || "string".equals(t1)) {
+                return "string";
+            }
+            return "int";
+        }
+        if (List.of("-", "*", "/", "%", "&", "|", "^", "<<", ">>", ">>>").contains(op)) {
+            return "int";
+        }
+        if (isAssignmentOperator(op)) {
+            return inferExprType(ctx.expression(0), InferenceMode.GENERAL);
+        }
+        return "int";
+    }
+
+    /**
+     * 三目分支类型合并：与 Java 数值提升一致（int/char → int），null 与数组类型取非 null 一侧。
+     */
+    private static String mergeTernaryBranchTypes(String t1, String t2) {
+        if (t1.equals(t2)) {
+            return t1;
+        }
+        if (NULL_T.equals(t1)) {
+            return t2;
+        }
+        if (NULL_T.equals(t2)) {
+            return t1;
+        }
+        boolean n1 = "int".equals(t1) || "char".equals(t1);
+        boolean n2 = "int".equals(t2) || "char".equals(t2);
+        if (n1 && n2) {
+            return "int";
+        }
+        if ("string".equals(t1) && isTernaryStringable(t2)) {
+            return "string";
+        }
+        if ("string".equals(t2) && isTernaryStringable(t1)) {
+            return "string";
+        }
+        if (t1.endsWith("[]") && t2.endsWith("[]")) {
+            int r1 = arrayRank(t1);
+            int r2 = arrayRank(t2);
+            if (r1 == r2) {
+                String b1 = arrayBasePrimitive(t1);
+                String b2 = arrayBasePrimitive(t2);
+                if (("int".equals(b1) || "char".equals(b1)) && ("int".equals(b2) || "char".equals(b2))) {
+                    return arrayTypeName("int", r1);
+                }
+            }
+        }
+        return t1;
+    }
+
+    private static boolean isTernaryStringable(String t) {
+        return "string".equals(t) || "int".equals(t) || "char".equals(t) || "boolean".equals(t);
+    }
+
+    private static boolean isComparisonOp(String op) {
+        return op.equals("<") || op.equals(">") || op.equals("<=") || op.equals(">=");
+    }
+
+    private String inferPrimaryType(MiniJavaParser.PrimaryContext p, InferenceMode mode) {
+        if (p.literal() != null) {
+            return inferLiteralType(p.literal(), mode);
+        }
+        if (p.identifier() != null) {
+            return Objects.requireNonNull(getDeclaredType(p.identifier().getText()), "undeclared");
+        }
+        if (p.expression() != null) {
+            return inferExprType(p.expression(), mode);
+        }
+        return "int";
+    }
+
+    private String inferLiteralType(MiniJavaParser.LiteralContext lit, InferenceMode mode) {
+        if (lit.NULL_LITERAL() != null) {
+            return NULL_T;
+        }
+        if (lit.DECIMAL_LITERAL() != null) {
+            if (mode == InferenceMode.ARGUMENT || mode == InferenceMode.VAR_INIT) {
+                return "int";
+            }
+            int v = Integer.parseInt(lit.DECIMAL_LITERAL().getText().replace("_", ""));
+            if (v < -128 || v > 127) {
+                return "int";
+            }
+            return "int";
+        }
+        if (lit.CHAR_LITERAL() != null) {
+            return "char";
+        }
+        if (lit.STRING_LITERAL() != null) {
+            return "string";
+        }
+        if (lit.BOOL_LITERAL() != null) {
+            return "boolean";
+        }
+        return "int";
+    }
+
+    private String inferMethodCallReturn(MiniJavaParser.MethodCallContext ctx) {
+        String name = ctx.identifier().getText();
+        List<MiniJavaParser.ExpressionContext> argExprs = new ArrayList<>();
+        if (ctx.arguments() != null && ctx.arguments().expressionList() != null) {
+            argExprs.addAll(ctx.arguments().expressionList().expression());
+        }
+        if (isBuiltin(name)) {
+            return inferBuiltinReturn(name, argExprs);
+        }
+        List<String> argTypes = new ArrayList<>();
+        for (MiniJavaParser.ExpressionContext e : argExprs) {
+            argTypes.add(inferExprType(e, InferenceMode.ARGUMENT));
+        }
+        CompiledMethod m = resolveOverload(name, argTypes);
+        return m.returnType;
+    }
+
+    private String inferBuiltinReturn(String name, List<MiniJavaParser.ExpressionContext> args) {
+        return switch (name) {
+            case "print", "println", "assert" -> "void";
+            case "length" -> "int";
+            case "to_char_array" -> "char[]";
+            case "to_string", "itoa" -> "string";
+            case "atoi" -> "int";
+            default -> "void";
+        };
+    }
+
+    private String inferNewType(MiniJavaParser.CreatorContext ctx) {
+        String base = primitiveTypeToken(ctx.createdName().primitiveType());
+        MiniJavaParser.ArrayCreatorRestContext rest = ctx.arrayCreatorRest();
+        int dim = rest.LBRACK().size();
+        return arrayTypeName(base, dim);
+    }
+
+    private static String primitiveTypeToken(MiniJavaParser.PrimitiveTypeContext ctx) {
+        if (ctx.INT() != null) {
+            return "int";
+        }
+        if (ctx.CHAR() != null) {
+            return "char";
+        }
+        if (ctx.BOOLEAN() != null) {
+            return "boolean";
+        }
+        if (ctx.STRING() != null) {
+            return "string";
+        }
+        throw new RuntimeException("primitive");
+    }
+
+    private static String typeTypeToString(MiniJavaParser.TypeTypeContext ctx) {
+        StringBuilder sb = new StringBuilder(primitiveTypeToken(ctx.primitiveType()));
+        int dims = ctx.LBRACK().size();
+        sb.append("[]".repeat(dims));
+        return sb.toString();
+    }
+
+    private static String arrayTypeName(String base, int dims) {
+        return base + "[]".repeat(dims);
+    }
+
+    private static Object defaultValueForType(String t) {
+        if (t.endsWith("[]")) {
+            return null;
+        }
+        return switch (t) {
+            case "int" -> 0;
+            case "char" -> (char) 0;
+            case "boolean" -> false;
+            case "string" -> "";
+            default -> null;
+        };
+    }
+
+    private Object coerceValueToType(String type, Object value) {
+        if (type == null) {
+            return value;
+        }
+        if (type.endsWith("[]")) {
+            if (value == null) {
+                return null;
+            }
+            if (!arrayValueAssignable(type, value)) {
+                throw new RuntimeException("array type mismatch");
+            }
+            return value;
+        }
+        return switch (type) {
+            case "int" -> {
+                if (value instanceof Integer) {
+                    yield value;
+                }
+                if (value instanceof Character) {
+                    yield toInt(value, "int");
+                }
+                throw new RuntimeException("to int");
+            }
+            case "char" -> {
+                if (value instanceof Character) {
+                    yield value;
+                }
+                if (value instanceof Integer i) {
+                    yield (char) (i & 0xFF);
+                }
+                throw new RuntimeException("to char");
+            }
+            case "boolean" -> {
+                if (value instanceof Boolean) {
+                    yield value;
+                }
+                throw new RuntimeException("to boolean");
+            }
+            case "string" -> {
+                if (value instanceof String) {
+                    yield value;
+                }
+                throw new RuntimeException("to string");
+            }
+            default -> value;
+        };
+    }
+
+    private String resolveLValueType(MiniJavaParser.ExpressionContext lhs) {
+        if (isArraySubscript(lhs)) {
+            return elementTypeOfArrayExpr(lhs.expression(0));
+        }
+        if (lhs.primary() != null && lhs.primary().identifier() != null) {
+            String n = lhs.primary().identifier().getText();
+            String t = getDeclaredType(n);
+            if (t == null) {
+                throw new RuntimeException("undeclared");
+            }
+            return t;
+        }
+        throw new RuntimeException("bad lvalue");
+    }
+
+    private void assignToLValue(MiniJavaParser.ExpressionContext lhs, Object value) {
+        if (isArraySubscript(lhs)) {
+            writeArrayAccess(lhs, value);
+            return;
+        }
+        if (lhs.primary() != null && lhs.primary().identifier() != null) {
+            String variableName = lhs.primary().identifier().getText();
+            for (int i = scopeStack.size() - 1; i >= 0; i--) {
+                if (scopeStack.get(i).containsKey(variableName)) {
+                    scopeStack.get(i).put(variableName, value);
+                    return;
+                }
+            }
+        }
+        throw new RuntimeException("assign");
+    }
+
+    private Object applyIncDec(String variableName, String op, boolean isPrefix) {
+        Object value = null;
+        int scopeIndex = -1;
+        for (int i = scopeStack.size() - 1; i >= 0; i--) {
+            if (scopeStack.get(i).containsKey(variableName)) {
+                value = scopeStack.get(i).get(variableName);
+                scopeIndex = i;
+                break;
+            }
+        }
+        if (value == null || scopeIndex < 0) {
+            throw new RuntimeException("incdec");
+        }
+        String declaredType = getDeclaredType(variableName);
+        if (value instanceof Integer iv) {
+            int nv = op.contains("+") ? iv + 1 : iv - 1;
+            Object coerced = coerceValueToType("int", nv);
+            scopeStack.get(scopeIndex).put(variableName, coerced);
+            return isPrefix ? coerced : iv;
+        }
+        if (value instanceof Character ch) {
+            int intValue = ch.charValue();
+            int nv = op.contains("+") ? intValue + 1 : intValue - 1;
+            Object coerced = coerceValueToType(declaredType != null ? declaredType : "char", nv);
+            scopeStack.get(scopeIndex).put(variableName, coerced);
+            return isPrefix ? coerced : ch;
+        }
+        throw new RuntimeException("incdec type");
+    }
+
+    // -------------------------------------------------------------------------
+    // operators (from Lab2)
+    // -------------------------------------------------------------------------
 
     private boolean isAssignmentOperator(String op) {
         return op.equals("=")
@@ -490,393 +1626,391 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     }
 
     private void validateAssignmentOperatorForType(String op, String declaredType) {
-        // Note 4: string 只支持 = 和 +=
         if ("string".equals(declaredType)) {
             if (!op.equals("=") && !op.equals("+=")) {
-                throw new RuntimeException("Invalid assignment operator " + op + " for string");
+                throw new RuntimeException("string assign op");
             }
             return;
         }
-        // boolean 只支持 =
         if ("boolean".equals(declaredType)) {
             if (!op.equals("=")) {
-                throw new RuntimeException("Invalid assignment operator " + op + " for boolean");
+                throw new RuntimeException("boolean assign op");
             }
             return;
         }
-        // int/char：支持所有赋值运算符（运算阶段按 int 计算，最终由 coerceValueToType 收敛）
-        if ("int".equals(declaredType) || "char".equals(declaredType)) {
+        if ("int".equals(declaredType) || "char".equals(declaredType) || declaredType.endsWith("[]")) {
             return;
         }
-        throw new RuntimeException("Invalid assignment target type: " + declaredType);
+        throw new RuntimeException("bad assign target");
     }
 
-    private Object coerceValueToType(String type, Object value) {
-        if (type == null) return value;
-        return switch (type) {
-            case "int" -> {
-                if (value instanceof Integer) yield value;
-                if (value instanceof Character) yield toInt(value, "int");
-                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to int");
-            }
-            case "char" -> {
-                if (value instanceof Character) yield value;
-                if (value instanceof Integer i) yield (char) (i & 0xFF);
-                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to char");
-            }
-            case "boolean" -> {
-                if (value instanceof Boolean) yield value;
-                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to boolean");
-            }
-            case "string" -> {
-                if (value instanceof String) yield value;
-                throw new RuntimeException("Type mismatch: cannot assign " + value.getClass().getName() + " to string");
-            }
-            default -> value;
-        };
-    }
-
-    @Override
-    public Object visitPrimitiveType(MiniJavaParser.PrimitiveTypeContext ctx) {
-        String type = ctx.getText();
-        Object value = "";
-        if (type.equals("int") || type.equals("char")) {
-            value = type.equals("char") ? (char) 0 : 0;
-        } else if (type.equals("boolean")) {
-            value = false;
-        } 
-        return value;
-    }
-    
-    
-    
-    //******************************
-    //********* 非接口方法 ***********
-    //******************************  
-
-    // int 和 char 转换为 int，检查过
     private int toInt(Object v, String op) {
-        if (v instanceof Integer i) return i;
-        // if (v instanceof Character c) return (int) c;
+        if (v instanceof Integer i) {
+            return i;
+        }
         if (v instanceof Character c) {
-            int value = (int) c;
-            if ((c & 0x80) != 0) value |= 0xFFFFFF00;
+            int value = c.charValue();
+            if ((c & 0x80) != 0) {
+                value |= 0xFFFFFF00;
+            }
             return value;
         }
-        throw new RuntimeException("Invalid operand type for " + op + ": " + v.getClass());
+        throw new RuntimeException("toInt " + op);
     }
 
-    // 逻辑运算符，检查过
     private Object evaluateLogicalOperatorWithShortCircuit(Object left, MiniJavaParser.ExpressionContext rightExpr, String op) {
         if (!(left instanceof Boolean)) {
-            throw new RuntimeException("Invalid type for " + op + " operator: expected boolean, got " + left.getClass().getName());
+            throw new RuntimeException("logic left");
         }
-        
-        if (op.equals("and")) {
-            if (!((Boolean)left)) return false;
+        if ("and".equals(op)) {
+            if (!(Boolean) left) {
+                return false;
+            }
             Object right = visit(rightExpr);
             if (!(right instanceof Boolean)) {
-                throw new RuntimeException("Invalid type for and operator: expected boolean, got " + right.getClass().getName());
+                throw new RuntimeException("logic right");
             }
-            return (Boolean)right;
-        } else if (op.equals("or")) {
-            if ((Boolean)left) return true;
+            return right;
+        }
+        if ("or".equals(op)) {
+            if ((Boolean) left) {
+                return true;
+            }
             Object right = visit(rightExpr);
             if (!(right instanceof Boolean)) {
-                throw new RuntimeException("Invalid type for or operator: expected boolean, got " + right.getClass().getName());
+                throw new RuntimeException("logic right");
             }
-            return (Boolean)right;
-        } else {
-            throw new RuntimeException("Unknown logical operator: " + op);
+            return right;
         }
+        throw new RuntimeException("logic");
     }
 
-    // 二元运算符，检查过
     private Object evaluateBinaryOperator(Object left, Object right, String op) {
         try {
             switch (op) {
-                case "+":
+                case "+" -> {
                     if (left instanceof String || right instanceof String) {
-                        return left.toString() + right.toString();
-                    } else if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                        return String.valueOf(left) + String.valueOf(right);
+                    }
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "+") + toInt(right, "+");
                     }
-                    throw new RuntimeException("Invalid types for + operator");
-                case "-":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("+");
+                }
+                case "-" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "-") - toInt(right, "-");
                     }
-                    throw new RuntimeException("Invalid types for - operator");
-                case "*":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("-");
+                }
+                case "*" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "*") * toInt(right, "*");
                     }
-                    throw new RuntimeException("Invalid types for * operator: both operands must be int or char");
-                case "/":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("*");
+                }
+                case "/" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         int r = toInt(right, "/");
-                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        if (r == 0) {
+                            throw new ArithmeticException("div0");
+                        }
                         return toInt(left, "/") / r;
                     }
-                    throw new RuntimeException("Invalid types for / operator: both operands must be int or char");
-                case "%":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("/");
+                }
+                case "%" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         int r = toInt(right, "%");
-                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        if (r == 0) {
+                            throw new ArithmeticException("mod0");
+                        }
                         return toInt(left, "%") % r;
                     }
-                    throw new RuntimeException("Invalid types for % operator: both operands must be int or char");
-                case "<":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("%");
+                }
+                case "<" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return compare(left, right) < 0;
                     }
-                    throw new RuntimeException("Invalid types for < operator: both operands must be int or char");
-                case ">":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("<");
+                }
+                case ">" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return compare(left, right) > 0;
                     }
-                    throw new RuntimeException("Invalid types for > operator: both operands must be int or char");
-                case "<=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException(">");
+                }
+                case "<=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return compare(left, right) <= 0;
                     }
-                    throw new RuntimeException("Invalid types for <= operator: both operands must be int or char");
-                case ">=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("<=");
+                }
+                case ">=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return compare(left, right) >= 0;
                     }
-                    throw new RuntimeException("Invalid types for >= operator: both operands must be int or char");
-                case "==":
+                    throw new RuntimeException(">=");
+                }
+                case "==" -> {
                     return areEqual(left, right);
-                case "!=":
+                }
+                case "!=" -> {
                     return !areEqual(left, right);
-                case "&":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                }
+                case "&" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "&") & toInt(right, "&");
                     }
-                    throw new RuntimeException("Invalid types for & operator: both operands must be int or char");
-                case "|":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("&");
+                }
+                case "|" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "|") | toInt(right, "|");
                     }
-                    throw new RuntimeException("Invalid types for | operator: both operands must be int or char");
-                case "^":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("|");
+                }
+                case "^" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "^") ^ toInt(right, "^");
                     }
-                    throw new RuntimeException("Invalid types for ^ operator: both operands must be int or char");
-                case "<<":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("^");
+                }
+                case "<<" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "<<") << toInt(right, "<<");
                     }
-                    throw new RuntimeException("Invalid types for << operator");
-                case ">>":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("<<");
+                }
+                case ">>" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, ">>") >> toInt(right, ">>");
                     }
-                    throw new RuntimeException("Invalid types for >> operator");
-                case ">>>":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException(">>");
+                }
+                case ">>>" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, ">>>") >>> toInt(right, ">>>");
                     }
-                    throw new RuntimeException("Invalid types for >>> operator");
-                case "=":
+                    throw new RuntimeException(">>>");
+                }
+                case "=" -> {
                     return right;
-                case "+=":
+                }
+                case "+=" -> {
                     if (left instanceof String || right instanceof String) {
-                        return left.toString() + right.toString();
+                        return String.valueOf(left) + String.valueOf(right);
                     }
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "+=") + toInt(right, "+=");
                     }
-                    throw new RuntimeException("Invalid types for += operator");
-                case "-=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("+=");
+                }
+                case "-=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "-=") - toInt(right, "-=");
                     }
-                    throw new RuntimeException("Invalid types for -= operator");
-                case "*=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("-=");
+                }
+                case "*=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "*=") * toInt(right, "*=");
                     }
-                    throw new RuntimeException("Invalid types for *= operator");
-                case "/=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("*=");
+                }
+                case "/=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         int r = toInt(right, "/=");
-                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        if (r == 0) {
+                            throw new ArithmeticException("div0");
+                        }
                         return toInt(left, "/=") / r;
                     }
-                    throw new RuntimeException("Invalid types for /= operator");
-                case "%=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("/=");
+                }
+                case "%=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         int r = toInt(right, "%=");
-                        if (r == 0) throw new ArithmeticException("Division by zero");
+                        if (r == 0) {
+                            throw new ArithmeticException("mod0");
+                        }
                         return toInt(left, "%=") % r;
                     }
-                    throw new RuntimeException("Invalid types for %= operator");
-                case "&=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("%=");
+                }
+                case "&=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "&=") & toInt(right, "&=");
                     }
-                    throw new RuntimeException("Invalid types for &= operator");
-                case "|=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("&=");
+                }
+                case "|=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "|=") | toInt(right, "|=");
                     }
-                    throw new RuntimeException("Invalid types for |= operator");
-                case "^=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("|=");
+                }
+                case "^=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "^=") ^ toInt(right, "^=");
                     }
-                    throw new RuntimeException("Invalid types for ^= operator");
-                case "<<=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("^=");
+                }
+                case "<<=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, "<<=") << toInt(right, "<<=");
                     }
-                    throw new RuntimeException("Invalid types for <<= operator");
-                case ">>=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException("<<=");
+                }
+                case ">>=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, ">>=") >> toInt(right, ">>=");
                     }
-                    throw new RuntimeException("Invalid types for >>= operator");
-                case ">>>=":
-                    if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
+                    throw new RuntimeException(">>=");
+                }
+                case ">>>=" -> {
+                    if (isIntegral(left) && isIntegral(right)) {
                         return toInt(left, ">>>=") >>> toInt(right, ">>>=");
                     }
-                    throw new RuntimeException("Invalid types for >>>= operator");
-                default:
-                    throw new RuntimeException("Unknown binary operator: " + op);
+                    throw new RuntimeException(">>>=");
+                }
+                default -> {
+                    throw new RuntimeException("op " + op);
+                }
             }
-        } catch (ClassCastException e) {
-            throw new RuntimeException("Type mismatch: " + e.getMessage());
+        } catch (ArithmeticException e) {
+            throw new RuntimeException(e.getMessage());
         }
     }
 
-    // 前缀运算符，检查过
+    private static boolean isIntegral(Object o) {
+        return o instanceof Integer || o instanceof Character;
+    }
+
     private Object evaluateUnaryPrefixOperator(Object operand, String op) {
-        switch (op) {
-            case "+":
-                if (operand instanceof Integer || operand instanceof Character) 
-                    return toInt(operand, "+");
-                throw new RuntimeException("Invalid type for + operator");
-            case "-":
-                if (operand instanceof Integer || operand instanceof Character) 
-                    return -toInt(operand, "-");
-                throw new RuntimeException("Invalid type for - operator");
-            case "not":
-                if (operand instanceof Boolean) 
-                    return !((Boolean) operand);
-                throw new RuntimeException("Invalid type for not operator: expected boolean, got " + operand.getClass().getName());
-            case "~":
-                if (operand instanceof Integer || operand instanceof Character) 
-                    return ~toInt(operand, "~");
-                throw new RuntimeException("Invalid type for ~ operator");
-            case "++":
-                // ++ operator can only be applied to variables, not literals
-                throw new RuntimeException("Invalid use of ++ operator: can only be applied to variables");
-            case "--":
-                // -- operator can only be applied to variables, not literals
-                throw new RuntimeException("Invalid use of -- operator: can only be applied to variables");
-            default:
-                throw new RuntimeException("Unknown unary prefix operator: " + op);
-        }
+        return switch (op) {
+            case "+" -> {
+                if (isIntegral(operand)) {
+                    yield toInt(operand, "+");
+                }
+                throw new RuntimeException("+");
+            }
+            case "-" -> {
+                if (isIntegral(operand)) {
+                    yield -toInt(operand, "-");
+                }
+                throw new RuntimeException("-");
+            }
+            case "not" -> {
+                if (operand instanceof Boolean b) {
+                    yield !b;
+                }
+                throw new RuntimeException("not");
+            }
+            case "~" -> {
+                if (isIntegral(operand)) {
+                    yield ~toInt(operand, "~");
+                }
+                throw new RuntimeException("~");
+            }
+            default -> throw new RuntimeException("prefix");
+        };
     }
 
-    // 类型转换，检查过
-    private Object evaluateTypeCast(Object operand, MiniJavaParser.PrimitiveTypeContext type) {
-        if (type.INT() != null) {
-            if (operand instanceof Character c || operand instanceof Integer i) {
-                return toInt(operand, "type cast");
-            }
-            throw new RuntimeException("Cannot cast " + operand.getClass() + " to int");
+    private Object evaluateTypeCast(Object operand, MiniJavaParser.TypeTypeContext tt) {
+        String t = typeTypeToString(tt);
+        if ("int".equals(t)) {
+            return coerceValueToType("int", operand);
         }
-        if (type.CHAR() != null) {
-            if (operand instanceof Integer i) {
-                return (char) (i & 0xFF);
-            } else if (operand instanceof Character c) {
-                return c;
-            }
-            throw new RuntimeException("Cannot cast " + operand.getClass() + " to char");
+        if ("char".equals(t)) {
+            return coerceValueToType("char", operand);
         }
-        throw new RuntimeException("Unknown type: " + type.getText());
+        if ("boolean".equals(t)) {
+            return coerceValueToType("boolean", operand);
+        }
+        if ("string".equals(t)) {
+            return coerceValueToType("string", operand);
+        }
+        if (t.endsWith("[]")) {
+            return coerceValueToType(t, operand);
+        }
+        throw new RuntimeException("cast");
     }
 
-    // 三目运算符，检查过
     private Object evaluateTernaryOperator(Object condition, MiniJavaParser.ExpressionContext thenExpr, MiniJavaParser.ExpressionContext elseExpr) {
-        try {
-            if (!(condition instanceof Boolean)) {
-                throw new RuntimeException("Ternary operator error: condition must be boolean");
-            }
-            return (Boolean) condition ? visit(thenExpr) : visit(elseExpr);
-        } catch (Exception e) {
-            throw new RuntimeException("Ternary operator error: " + e.getMessage());
+        if (!(condition instanceof Boolean)) {
+            throw new RuntimeException("?: cond");
         }
+        return (Boolean) condition ? visit(thenExpr) : visit(elseExpr);
     }
 
-    // == 运算符，检查过
     private boolean areEqual(Object left, Object right) {
-        if (left == right) return true;
-        if (left == null || right == null) return false;
-
-        // Check if types are the same
+        if (left == right) {
+            return true;
+        }
+        if (left == null || right == null) {
+            if (left == null && right == null) {
+                return true;
+            }
+            // null vs array: comparable
+            if (left == null && isArrayLike(right)) {
+                return false;
+            }
+            if (right == null && isArrayLike(left)) {
+                return false;
+            }
+            return false;
+        }
+        if (isArrayLike(left) || isArrayLike(right)) {
+            if (!isArrayLike(left) || !isArrayLike(right)) {
+                throw new RuntimeException("array compare type");
+            }
+            return left == right;
+        }
         if (left.getClass() != right.getClass()) {
-            // Allow int <-> char comparison
-            if (!((left instanceof Integer && right instanceof Character) || 
-                  (left instanceof Character && right instanceof Integer))) {
-                throw new RuntimeException("Type mismatch: cannot compare " + left.getClass().getName() + " and " + right.getClass().getName());
+            if (!((left instanceof Integer && right instanceof Character)
+                    || (left instanceof Character && right instanceof Integer))) {
+                throw new RuntimeException("compare types");
             }
         }
-
-        // int <-> char numeric comparison
         if (left instanceof Integer li && right instanceof Character rc) {
-            return li == toInt(rc, "areEqual");
+            return li == toInt(rc, "eq");
         }
         if (left instanceof Character lc && right instanceof Integer ri) {
-            return toInt(lc, "areEqual") == ri;
+            return toInt(lc, "eq") == ri;
         }
-        // char <-> char
         if (left instanceof Character lc2 && right instanceof Character rc2) {
             return lc2.charValue() == rc2.charValue();
         }
-        // int <-> int
         if (left instanceof Integer && right instanceof Integer) {
             return left.equals(right);
         }
-        // String <-> String
         if (left instanceof String && right instanceof String) {
             return left.equals(right);
         }
-        // Boolean <-> Boolean
         if (left instanceof Boolean && right instanceof Boolean) {
             return left.equals(right);
         }
-        
-        // Any other type combination is invalid
-        throw new RuntimeException("Type mismatch: cannot compare " + left.getClass().getName() + " and " + right.getClass().getName());
+        throw new RuntimeException("eq");
     }
 
-    // 检查过
-    private int compare(Object left, Object right) {
-        try {
-            if ((left instanceof Integer || left instanceof Character) && (right instanceof Integer || right instanceof Character)) {
-                return Integer.compare(toInt(left, "compare"), toInt(right, "compare"));
-            } else if (left instanceof String && right instanceof String) {
-                return ((String) left).compareTo((String) right);
-            } else if (left instanceof Boolean && right instanceof Boolean) {
-                return Boolean.compare((Boolean) left, (Boolean) right);
-            }
-            throw new RuntimeException("Cannot compare " + left.getClass() + " and " + right.getClass());
-        } catch (Exception e) {
-            throw new RuntimeException("Comparison error: " + e.getMessage());
-        }
+    private static boolean isArrayLike(Object o) {
+        return o instanceof int[] || o instanceof char[] || o instanceof boolean[] || o instanceof String[]
+                || o instanceof Object[];
     }
-    
-    private void printScope(int level, Map<String, Object> scope, Map<String, String> types) {
-        scope.keySet().stream().sorted().forEach(variableName -> {
-            Object value = scope.get(variableName);
-            String type = types.getOrDefault(variableName, "unknown");
-            System.out.println("Scope " + level + ": " + variableName + ": (" + type + ") " + value);
-        });
+
+    private int compare(Object left, Object right) {
+        if (isIntegral(left) && isIntegral(right)) {
+            return Integer.compare(toInt(left, "cmp"), toInt(right, "cmp"));
+        }
+        if (left instanceof String s1 && right instanceof String s2) {
+            return s1.compareTo(s2);
+        }
+        if (left instanceof Boolean b1 && right instanceof Boolean b2) {
+            return Boolean.compare(b1, b2);
+        }
+        throw new RuntimeException("cmp");
     }
 
     private String getDeclaredType(String variableName) {
