@@ -1,0 +1,50 @@
+// ERROR: method_redefinition
+boolean[] method0(char p0, char p1) {
+    var v0 = 27;
+    v0 = -18;
+    for (int v1 = 0; v1 < 4; v1++) {
+        var v6 = (int) p0;
+        if ((p1 != p1)) {
+            int[][] v2 = new int[][] {{-1, 10}, {-2}, {0, -7, -2}, {2, 3, 10, -3}, {3, 0}};
+            v2 = new int[6][];
+        }
+        for (int v3 = 0; v3 < 2; v3++) {
+            p1 = p0;
+        }
+        if (false) {
+            var v5 = 11;
+            int v4 = (int) p0;
+            v4 /= -248;
+            v5 = ((int) p0 - v4);
+            v6 ^= (int) p1;
+        }
+    }
+    return new boolean[] {false, true, true, true, true};
+}
+
+char[] method0() {
+    int v8;
+    int v7 = -29;
+    v7 = 40;
+    v8 = length(new boolean[] {true, true, false});
+    return new char[] {'"', 'V', '3'};
+}
+
+char[] method2(char p0) {
+    print(new int[5]);
+    print(new int[3]);
+    return new char[7];
+}
+
+int main() {
+    int v11 = 48;
+    int v10;
+    int[] v9 = new int[5];
+    v9 = new int[] {-9, 8, -10};
+    v10 = -23;
+    while ((v11 < 2)) v11++;
+    println(method0('O', 'w'));
+    println(method0());
+    println(method2('6'));
+    return v9[0];
+}

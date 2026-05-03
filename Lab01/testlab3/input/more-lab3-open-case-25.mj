@@ -1,0 +1,52 @@
+// ERROR: break_outside_loop
+char method0(char p0) {
+    var v0 = -7;
+    if ((p0 < p0)) break;
+    v0 = -1;
+    if ((p0 <= p0)) {
+        int v1;
+        v1 *= length(":js-qE");
+    }
+    return p0;
+}
+
+int main() {
+    int v11 = 4;
+    int[] v2;
+    {
+        char[] v5 = {'i', '}', 'I', '1', 'l'};
+        v2 = new int[6];
+        for (int v3 = 0; v3 < 3; v3++) ;
+        if ((4 != 6)) {
+            int v4 = -45;
+            v4 = 17;
+            v5 = new char[] {'f', 'm', '>'};
+        } else {
+            char v10 = '&';
+            int v8;
+            {
+                var v7 = 'V';
+                var v6 = -22;
+                v6 = length(new char[2]);
+                v7 |= (char) length(new int[][] {{-6}, {-4, 9}, {-4, 2, -3, -5}, {9, 3}});
+                v6 = ((int) 'F' >> v6);
+            }
+            while ((v8 < 3)) {
+                int v9 = -12;
+                v9 *= length(new char[] {'7'});
+                v10 = (char) -29;
+                v8++;
+            }
+        }
+    }
+    print((-6 < -7));
+    while ((v11 < 4)) {
+        int[][][] v12;
+        println((-5 < 8));
+        v12 = new int[10][][];
+        v12[0][0] = new int[8];
+        v11++;
+    }
+    println(method0(method0('q')));
+    return -4;
+}

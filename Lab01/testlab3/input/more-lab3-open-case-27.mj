@@ -1,0 +1,35 @@
+int[] method0(boolean[] p0, boolean p1) {
+    for (int v0 = 0; v0 < 3; v0++) {
+        p0[0] = (p1 == p1);
+        for (int v1 = 0; v1 < 2; v1++) {
+            p0 = new boolean[4];
+        }
+    }
+    println(')');
+    p0 = new boolean[9];
+    p0[0] = true;
+    return new int[] {-2, 5};
+}
+
+int main() {
+    int[] v6;
+    print("hU{r");
+    println(new char[] {'Z', '0', '=', 'R'});
+    {
+        int v5 = 5;
+        for (int v2 = 0; v2 < 5; v2++) {
+            int v4;
+            char[] v3 = new char[] {'y', 'r'};
+            v3 = new char[] {'w', 'C', '|', '7'};
+            v4 *= length(new char[] {'p', 'x', 's'});
+        }
+        v5 = -41;
+    }
+    {
+        print(new int[5]);
+        if ((10 > -7)) ;
+        v6 = new int[3];
+    }
+    println(method0(new boolean[7], (0 <= 9)));
+    return 39;
+}

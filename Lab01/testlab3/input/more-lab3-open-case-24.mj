@@ -1,0 +1,113 @@
+int method0(int p0, int[][][] p1, int p2) {
+    if ((p0 < p0)) {
+        p1 = p1;
+    } else p0 = length(new boolean[] {false});
+    if ((p0 >= p0)) {
+        string v4 = ";1>";
+        int v1;
+        if ((p0 >= p2)) {
+            if ((p0 != p2)) {
+                char v0;
+                v0 = (char) p0;
+                v1 >>>= length(new int[9][]);
+            } else {
+                int[][] v2;
+                v2 = new int[5][];
+            }
+            p1[0][0][0] = -46;
+            println(new int[7]);
+        } else {
+            boolean[] v3 = new boolean[8];
+            v3 = new boolean[] {false};
+        }
+        v4 = itoa(p2);
+        p1[0] = new int[10][];
+    } else {
+        {
+            char[] v6;
+            for (int v5 = 0; v5 < 2; v5++) {
+                char v8;
+                boolean v7;
+                v6 = new char[10];
+                v7 = (p0 > p0);
+                v8 = (char) p0;
+            }
+        }
+    }
+    p1[0] = new int[6][];
+    p1[0][0] = new int[] {-5};
+    print(new boolean[5]);
+    return p0;
+}
+
+int main() {
+    {
+        for (int v9 = 0; v9 < 3; v9++) ;
+        if ((-10 < 1)) {
+            var v10 = 9;
+            v10 = 32;
+        } else {
+            int v12 = -50;
+            var v11 = 31;
+            println('?');
+            v11 = 44;
+            v12 = 31;
+        }
+    }
+    if (true) {
+        if ((-3 <= 3)) {
+            println('J');
+        }
+    } else if ((0 > 1)) {
+        int v13;
+        v13 = -34;
+    } else {
+        println(new boolean[6]);
+        {
+            var v19 = (6 >= 10);
+            char v18;
+            int[] v17;
+            int v15 = 10;
+            print(length(new int[][] {{1, 0, -8, -4}, {-5, -7, 10}, {-5, -4, -9}, {-1, -7, 3}}));
+            for (int v14 = 0; v14 < 2; v14++) {
+                boolean v16 = (8 <= -4);
+                v15 <<= length(new int[5][]);
+                v16 = (-7 != 3);
+                v17 = new int[10];
+            }
+            if ((7 == 8)) {
+                v18 = '|';
+                v19 = (6 == 10);
+            }
+        }
+        {
+            int v20 = -19;
+            v20 = length("ASL/Th");
+        }
+    }
+    if ((5 > 8)) {
+        int v21 = -46;
+        while ((v21 < 5)) {
+            int[][] v22;
+            v22 = new int[][] {{-10, -5, 1}, {-4, -10, -8}, {0, 3}};
+            v21++;
+        }
+        {
+            var v27 = -40;
+            int[] v24 = {7, -4, -6, 4, 1};
+            int v23 = -6;
+            while ((v23 < 3)) {
+                int v26;
+                var v25 = "E(h+b9";
+                v24 = new int[4];
+                v25 += (-8 == -4);
+                v26 = 47;
+                v23++;
+            }
+            print(new boolean[] {true, false, true, false, false});
+            v27 = -40;
+        }
+    }
+    println(method0(atoi("-1439"), new int[][][] {{{1, 9, 4, -4}, {10, 7, -7}, {-8, -2}, {1, -8, -4, -10}}, {{5}}}, 2));
+    return -49;
+}

@@ -1,0 +1,88 @@
+int[][] method0(int p0) {
+    assert((p0 < p0));
+    println('w');
+    println(new char[] {'^'});
+    println(itoa(p0));
+    return new int[4][];
+}
+
+void method1(int[] p0) {
+    int[][] v12 = new int[][] {{10, -1}};
+    int v7;
+    var v1 = true;
+    for (int v0 = 0; v0 < 2; v0++) {
+        boolean v5;
+        p0[0] = length(new int[][] {{3, -3, 4, -2}, {9, -2}, {5, 1}, {4, -10, 5}});
+        {
+            v1 = (4 > 5);
+        }
+        for (int v2 = 0; v2 < 3; v2++) {
+            char[] v4 = {'x', 'k', 'A', 'X', '$'};
+            string v3 = "[$}";
+            v3 = ("G76N " + (-3 > 9));
+            v4 = new char[1];
+            v5 = false;
+        }
+    }
+    print(itoa(p0[0]));
+    if ((p0 == null)) {
+        print(p0);
+        p0 = p0;
+    } else if ((p0 == null)) {
+        boolean v11;
+        {
+            boolean[] v8 = new boolean[] {true, false, false};
+            if ((p0 != p0)) {
+                int[][] v6 = {{10}, {2}, {-3}};
+                v6 = new int[10][];
+            } else if (true) {
+                v7 = length("NKpro^");
+            } else if ((8 >= 3)) {
+                boolean v9 = (-5 >= 5);
+                v8 = new boolean[] {false, true, false, false};
+                v9 = (p0 == p0);
+            }
+        }
+        for (int v10 = 0; v10 < 5; v10++) {
+            v11 = (2 <= -9);
+        }
+    }
+    v12 = new int[1][];
+}
+
+int main() {
+    int[][] v22;
+    int[] v20;
+    int v16;
+    var v15 = 'p';
+    {
+        var v13 = -32;
+        while ((v13 < 5)) {
+            int[] v14;
+            v14 = new int[10];
+            v13++;
+        }
+        println((-2 != 3));
+    }
+    println('f');
+    v15 = '_';
+    v16 = atoi("-8190");
+    for (int v17 = 0; v17 < 5; v17++) {
+        int[] v19 = new int[10];
+        var v18 = (v16 >= v15);
+        v18 = false;
+        if (v18) {
+            int[][] v21;
+            v19 = new int[1];
+            v20 = new int[] {-10, -5, -3, 5};
+            v21 = new int[][] {{-1}, {-9, 8, -5}, {8, -9, 4, 3}};
+        } else {
+            v16 = (int) v15;
+            v15 = (char) (int) 'b';
+        }
+        if ((v18 or v18)) break;
+    }
+    v22 = method0(length(new boolean[9]));
+    method1(new int[1]);
+    return 0;
+}

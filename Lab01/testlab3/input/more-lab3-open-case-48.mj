@@ -1,0 +1,61 @@
+int[][][] method0() {
+    char v1;
+    int v0;
+    v0 = -3;
+    v1 = 'K';
+    if (false) {
+        var v2 = "iKvQ:g";
+        assert((v1 == v1));
+        v2 = "@Ll";
+    } else {
+        for (int v3 = 0; v3 < 3; v3++) {
+            int[][][] v4;
+            v4 = new int[6][][];
+        }
+    }
+    return new int[1][][];
+}
+
+string method1() {
+    int v6 = 39;
+    var v5 = -13;
+    v5 = 33;
+    method2();
+    v6 = -21;
+    for (int v7 = 0; v7 < 4; v7++) {
+        char v9;
+        int v8;
+        v8 += length(new int[5]);
+        v9 = (char) -3;
+    }
+    method2();
+    return ("nP.p>" + 8);
+}
+
+void method2() {
+    println();
+    if ((-2 >= 1)) {
+        print(new boolean[8]);
+        println(new char[] {'6', 's', 'P', '>', 'X'});
+    } else if (true) {
+        int v10;
+        while ((v10 < 2)) v10++;
+        print(new boolean[4]);
+    } else ;
+    return;
+    print(new boolean[] {false, true, true});
+}
+
+int main() {
+    int[][][] v13 = new int[4][][];
+    var v12 = -40;
+    var v11 = '?';
+    println(new int[10]);
+    println('J');
+    v11 = 'w';
+    v12 = 43;
+    v13 = method0();
+    println(method1());
+    method2();
+    return (int) v11;
+}

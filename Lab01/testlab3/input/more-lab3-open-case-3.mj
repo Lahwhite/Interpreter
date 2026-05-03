@@ -1,0 +1,59 @@
+char[] method0(int[][] p0) {
+    char v1;
+    int v0 = -31;
+    while ((v0 < 3)) {
+        println(new int[8]);
+        v1 = 'L';
+        print((2 != 8));
+        v0++;
+    }
+    if ((-5 < 1)) p0 = p0; else {
+        var v2 = 13;
+        println(itoa(-19));
+        println(new int[5]);
+        v2 = 43;
+    }
+    return new char[4];
+}
+
+int main() {
+    boolean[] v15 = {true, true};
+    int[][][] v13;
+    println(new char[3]);
+    if ((-5 != -6)) {
+        if ((4 > -7)) {
+            var v4 = "As3:H";
+            var v3 = -45;
+            println((to_string(new char[3]) + false));
+            v3 = -5;
+            v4 = ("GE!9H" + 'd');
+        }
+        for (int v5 = 0; v5 < 3; v5++) {
+            int v7 = 26;
+            int[][][] v6;
+            v6 = new int[1][][];
+            v7 += length("A40Etm");
+        }
+        {
+            char[] v8;
+            v8 = new char[] {'^', '`'};
+            {
+                var v10 = 22;
+                int[] v9;
+                v9 = new int[8];
+                v10 = length(new int[][] {{4, -3, -8, -8}});
+            }
+        }
+    } else {
+        int[][] v11 = new int[8][];
+        v11 = new int[][] {{-9, 4, 9, 9}, {-1}, {-10}, {-5}, {-8, 8, 3}};
+        for (int v12 = 0; v12 < 3; v12++) {
+            char v14;
+            v13 = new int[][][] {{{1, -8}}};
+            v14 <<= '*';
+            v15 = new boolean[1];
+        }
+    }
+    println(method0(new int[][] {{0, -4, 7, 5}}));
+    return 16;
+}

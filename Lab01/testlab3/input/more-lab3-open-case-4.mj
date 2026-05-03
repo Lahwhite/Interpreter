@@ -1,0 +1,27 @@
+void method0(boolean p0, int p1, char p2) {
+    print(new int[4]);
+    println(new boolean[9]);
+    p1 |= method1(new int[][] {{7, -5, 0}, {-10, 5}}, new char[] {'L'}, p2);
+}
+
+int method1(int[][] p0, char[] p1, int p2) {
+    boolean v0 = true;
+    v0 = (p2 != p2);
+    print(p1);
+    p1[0] = '*';
+    {
+        p1[0] = ';';
+        print((char) p2);
+        p0[0][0] = ((p2 >= p2) ? p2 : length(new boolean[] {false, true, true, false, false}));
+    }
+    return p2;
+}
+
+int main() {
+    var v1 = false;
+    v1 = (4 >= 8);
+    print(method1(new int[][] {{6}, {-8, 3, 2, -3}, {-6, -6, 10, -5}, {-10}, {-2, 3}}, new char[4], -26));
+    method0(v1, 48, '1');
+    println(method1(new int[2][], new char[] {'F', 'O', '4', 'G'}, length(new char[10])));
+    return 33;
+}

@@ -1,0 +1,107 @@
+int method0() {
+    int v6;
+    var v4 = -15;
+    if ((1 <= -8)) {
+        assert((8 != -5));
+    }
+    println(new char[] {'k', '*', '6'});
+    for (int v0 = 0; v0 < 5; v0++) {
+        char v3 = 'l';
+        int v2 = -10;
+        boolean[] v1 = {false, true, true, true};
+        v1 = new boolean[3];
+        while ((v2 < 3)) {
+            v3 = 'A';
+            v2++;
+        }
+        if (v1[0]) {
+            int[][] v5 = new int[][] {{2, 0}, {6}, {7}, {-3, 9, 1}};
+            v4 = length(new int[][] {{0, -10}, {2, 4, 2}, {1, 6, -1}, {8, 8, -6, 1}});
+            v5 = new int[][] {{-9, 5, 10}};
+        }
+    }
+    v6 = -49;
+    return 39;
+}
+
+string method1() {
+    int[][][] v9 = {{{-6, 1}, {9}, {-3, 4, 6}, {-7}}, {{5, 2, 10}, {8, 9, -10, -3}, {-10, 4, -5, 7}, {0, -3}}};
+    {
+        string v7 = "TS=";
+        v7 += (9 > 2);
+    }
+    {
+        boolean[] v8 = new boolean[] {false};
+        v8 = new boolean[4];
+    }
+    v9 = new int[1][][];
+    v9[0][0][0] = length(new int[][] {{-9}, {0, -3, 9, 7}, {7, 6, 8, -2}, {-4}});
+    print('8');
+    return ("W2'[&a" + 50);
+}
+
+void method2(int[] p0) {
+    var v23 = 27;
+    int v10;
+    while ((v10 < 3)) {
+        print(length(new char[] {'d', 'r'}));
+        p0[0] = -4;
+        v10++;
+    }
+    p0[0] = length(new int[10]);
+    if ((p0 == null)) {
+        char v20 = 'E';
+        var v15 = p0[0];
+        char v14 = '#';
+        {
+            int v11;
+            print(new boolean[4]);
+            while ((v11 < 4)) {
+                int v13 = p0[0];
+                int[][] v12;
+                v12 = new int[][] {{3, -3, 7, 0}, {-2, 7, -7}, {-10}, {-5, 5, -1, 8}};
+                v13 = method0();
+                v11++;
+            }
+            v14 -= '_';
+        }
+        while ((v15 < 2)) {
+            int v18;
+            for (int v16 = 0; v16 < 4; v16++) {
+                boolean[] v17 = new boolean[1];
+                v17 = new boolean[9];
+                v17 = new boolean[10];
+                v17 = v17;
+            }
+            while ((v18 < 2)) {
+                int[][] v19 = {{7, 5}, {3, -9, -2}, {-10, 0, 1, -10}};
+                v19 = new int[6][];
+                v20 = 'k';
+                v18++;
+            }
+            v15++;
+        }
+    } else {
+        char v22;
+        for (int v21 = 0; v21 < 4; v21++) {
+            v22 = 'A';
+        }
+        v23 -= atoi("-3929");
+    }
+}
+
+int main() {
+    int v25 = -21;
+    int v24 = 28;
+    v24 = 42;
+    v25 = length(new char[4]);
+    {
+        var v26 = 15;
+        v25 = length(new boolean[] {false, false, true});
+        while ((v26 < 4)) v26++;
+    }
+    println(method0());
+    println(method1());
+    method2(new int[] {-10});
+    return (-28 >> 34);
+}

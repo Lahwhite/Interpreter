@@ -1,0 +1,16 @@
+char[] method0(char[] p0, int[] p1, int p2) {
+    var v1 = false;
+    char v0;
+    v0 = '>';
+    v1 = (v0 != p2);
+    --p2;
+    return p0;
+}
+
+int main() {
+    var v2 = -17;
+    print((6 >= 6));
+    v2 = length(new char[] {'<'});
+    println(method0(new char[] {'M', 'h', '_'}, new int[1], length(new int[7])));
+    return -31;
+}

@@ -1,0 +1,78 @@
+// ERROR: invalid_atoi_arg
+boolean method0(int p0) {
+    println(atoi("#m/6#"));
+    if ((p0 == p0)) {
+        char[] v3 = {'^', 'A', '5', 'o'};
+        for (int v0 = 0; v0 < 2; v0++) {
+            boolean[] v2;
+            int[] v1 = new int[] {-3, -3, -7, 5};
+            v1 = new int[4];
+            v2 = new boolean[] {true, true, true};
+            v3 = new char[8];
+        }
+    }
+    if ((p0 < p0)) {
+        p0--;
+    }
+    p0--;
+    return (p0 >= p0);
+}
+
+void method1() {
+    var v4 = -19;
+    println(method0(-41));
+    print(length("^c "));
+    while ((v4 < 5)) {
+        println((to_string(new char[] {')', 'f', '/'}) + 'w'));
+        v4++;
+    }
+}
+
+int main() {
+    int[][][] v13 = new int[8][][];
+    int[] v7 = {10, 9, -7};
+    {
+        int v5 = -14;
+        v5 = 37;
+        {
+            int v6;
+            v6 = -35;
+        }
+    }
+    println(true);
+    v7 = new int[7];
+    if (method0(43)) {
+        int v10 = -5;
+        int[][][] v9;
+        var v8 = -8;
+        v8 = 14;
+        v9 = new int[][][] {{{-1, -10, 6}, {-9, -2, -5}}};
+        v10 = v7[0];
+    } else if ((7 < -7)) {
+        boolean v14 = (v7 == null);
+        v7[0] = length(new boolean[] {true, true, true, true, true});
+        println('-');
+        if ((v7 != v7)) {
+            int v12;
+            int v11 = v7[0];
+            v11 = -37;
+            v12 = -46;
+        } else if ((v7 != v7)) {
+            if (method0(v7[0])) {
+                v13 = new int[][][] {{{2}, {6, 0, -6}, {-2, 1}, {2, -10}}, {{-8, -4, 10, 1}, {5}, {-4}, {-8, 8, 3}}, {{-5, -1, 8, 7}, {-10, 5, -8, 4}, {0, -10, 3, -1}}, {{5, 7, 5}, {7, -5, -7}, {-4}}, {{-10}, {-3}, {2}}};
+            }
+            v14 = true;
+            v7[0] = length("_zh0T");
+        } else {
+            v7 = new int[1];
+        }
+    } else {
+        if (method0(v7[0])) {
+            v7[0] = -6;
+            v7[0] = -36;
+        }
+    }
+    println(method0(v7[0]));
+    method1();
+    return v7[0];
+}

@@ -1,0 +1,97 @@
+// ERROR: main_missing
+int method0(int[] p0) {
+    char[] v12 = {'V', 'm', '5', 'k'};
+    if ((6 != 4)) ; else if (method1()) {
+        char[] v1;
+        print(length(new int[][] {{1, -1, 6, -10}, {-10, -7, -1}, {7}, {-8}, {-8}}));
+        for (int v0 = 0; v0 < 3; v0++) {
+            boolean v2 = (p0 != p0);
+            v1 = new char[] {'S', 'x', 'C', 'F', '$'};
+            v2 = method1();
+        }
+        {
+            if (true) ; else if (method1()) ; else if ((p0 != p0)) {
+                int v4;
+                char[] v3 = new char[5];
+                v3 = new char[] {'p', 'A', 'R'};
+                v4 = p0[0];
+            }
+        }
+    } else {
+        for (int v5 = 0; v5 < 3; v5++) {
+            char[] v8 = {'.', 'j'};
+            boolean v7 = false;
+            int[][][] v6;
+            v6 = new int[10][][];
+            v7 = method1();
+            v8 = new char[] {'{', '"', 'L'};
+        }
+        p0[0] = length(new int[9][]);
+    }
+    if ((p0 == p0)) ; else if (method1()) {
+        int v9;
+        while ((v9 < 5)) {
+            boolean v14;
+            boolean v13 = (p0 != null);
+            int[][] v11 = {{4, -9, 2}, {8, 2, -3}, {1}, {5}};
+            for (int v10 = 0; v10 < 4; v10++) {
+                v11 = new int[][] {{-10, 7, -4}};
+                v12 = new char[9];
+                v13 = method1();
+            }
+            print(new boolean[] {true, false, false, true, true});
+            {
+                v14 = method1();
+            }
+            v9++;
+        }
+    } else if (method1()) {
+        p0[0] = 2;
+    } else {
+        int v15;
+        while ((v15 < 5)) {
+            print(length(new boolean[7]));
+            v15++;
+        }
+    }
+    {
+        var v16 = -5;
+        v16 = 7;
+    }
+    print(method1());
+    return 3;
+}
+
+boolean method1() {
+    int[][][] v26;
+    var v19 = 7;
+    if (false) {
+        int[][] v17 = new int[][] {{5, -4}, {4, 7}, {-9, 8}, {8, 7, 5, -1}};
+        print(new int[5]);
+        v17 = new int[][] {{8}};
+    } else {
+        int v18;
+        while ((v18 < 4)) v18++;
+    }
+    v19 = 47;
+    if ((9 > 6)) {
+        var v20 = 44;
+        v20 = 3;
+    } else if (true) {
+        for (int v21 = 0; v21 < 4; v21++) {
+            var v23 = "?;GNf";
+            var v22 = '%';
+            v22 = '/';
+            v22 = ' ';
+            v23 = itoa((int) v22);
+        }
+        {
+            int v25;
+            char[] v24 = new char[1];
+            v24 = new char[3];
+            v25 /= 661;
+        }
+    }
+    v26 = new int[3][][];
+    return (-9 < 10);
+}

@@ -1,0 +1,82 @@
+char method0(int[] p0, int p1, int p2) {
+    println();
+    print(new char[3]);
+    for (int v0 = 0; v0 < 2; v0++) {
+        if ((p1 != p1)) continue;
+    }
+    {
+        int[][][] v1 = {{{3, 2, 4}, {-9, 9, 9}, {-7, 6, -8, 10}}, {{3, -6, 0}, {0, 6, 3, -1}}, {{-6, -5, -4}, {-6, -3}, {-10}, {6, 8, 8}}};
+        v1 = new int[7][][];
+    }
+    print(new char[] {'9', 'N', '3', '0', 't'});
+    return '&';
+}
+
+char method1(int[][] p0, boolean p1) {
+    int v6;
+    int v5;
+    var v2 = -28;
+    while ((v2 < 3)) {
+        for (int v3 = 0; v3 < 4; v3++) {
+            var v4 = -43;
+            v4 = length(new char[] {'y', '%', '"', '(', 'm'});
+        }
+        println(method2(new char[] {'{', 'b'}, new int[] {0, 6, -7, -8}, new int[1][][]));
+        v2++;
+    }
+    v5 = length(new char[] {'z', '~', 'r', 'N', '.'});
+    while ((v6 < 3)) {
+        int v7 = v5;
+        while ((v7 < 5)) {
+            print(method0(new int[2], v5, v5));
+            v7++;
+        }
+        if (false) break;
+        v6++;
+    }
+    {
+        int[] v8 = new int[1];
+        v8 = new int[] {-2, 2, 9};
+    }
+    --v5;
+    return '9';
+}
+
+boolean method2(char[] p0, int[] p1, int[][][] p2) {
+    int v9;
+    p0[0] = method0(new int[] {-7, 9, -3, 5}, -39, 36);
+    p0[0] = '5';
+    v9 = -28;
+    p1 = p1;
+    {
+        int v10;
+        v10 = 23;
+        assert(false);
+    }
+    return (-9 == -8);
+}
+
+int main() {
+    int v16 = -46;
+    char v14 = '&';
+    for (int v11 = 0; v11 < 3; v11++) {
+        var v12 = -40;
+        println(new int[] {-3, -4, -6});
+        while ((v12 < 4)) {
+            int v13 = 18;
+            v13 = length(new int[][] {{5, -4}, {10}, {-2, -8, 1, -10}});
+            v14 = (char) length(new char[7]);
+            v12++;
+        }
+        if (method2(new char[1], new int[6], new int[][][] {{{7, -3, -7}, {-7, 3, 0, 5}}, {{1, -2, 7}, {4, -2}, {-2, -10, 6}}, {{-8, -8}, {-7, -5}, {-2, -1}}, {{-4, 6}}})) {
+            int[] v15 = new int[] {-9, 3, -2, 5};
+            v15 = new int[10];
+            v16 %= 231;
+        }
+    }
+    print((2 < 7));
+    println(method0(new int[10], 32, -17));
+    println(method1(new int[][] {{-1, -4, 4}, {5, 5}}, (1 <= 7)));
+    println(method2(new char[] {'h', 'W', 'e', 'L', 'J'}, new int[] {-6, -5, 7}, new int[3][][]));
+    return 32;
+}

@@ -1,0 +1,60 @@
+int[][][] method0() {
+    int v2 = 44;
+    boolean v0;
+    v0 = (8 >= -2);
+    for (int v1 = 0; v1 < 4; v1++) {
+        char[] v7 = new char[] {'G', '7', ':'};
+        if (false) {
+            var v4 = 42;
+            string v3 = "5DS1";
+            v2 ^= length(new char[9]);
+            v3 += (v0 == v0);
+            v4 = length(new boolean[] {false, false, true});
+        }
+        for (int v5 = 0; v5 < 2; v5++) {
+            char v6;
+            v6 = 'z';
+            v6 >>>= 'T';
+            v7 = new char[] {'{', '$', '[', '`', '7'};
+        }
+    }
+    if (((v0 != v0) and v0)) {
+        {
+            var v10 = 'h';
+            int v8 = 23;
+            while ((v8 < 5)) {
+                int[][][] v9 = {{{-1, -4}, {0, 3}, {6, 7, -6, 6}}, {{-5}}, {{6, -5}}};
+                v9 = new int[7][][];
+                v8++;
+            }
+            v10 = 'y';
+        }
+        print('J');
+    } else if (false) {
+        int v11;
+        while ((v11 < 5)) v11++;
+    }
+    return new int[][][] {{{-9, 6, -2, 7}, {-2}, {8, -8, 7, 8}, {6, -10, 9, 0}}, {{9, 8, -6, 2}, {-7, -3, -7, 2}, {-6}, {8, 4, -1, 3}}};
+}
+
+int main() {
+    int[][][] v15 = new int[][][] {{{10, 6, 6}, {-3, 10, -4}}, {{-6, 0}, {10, 5}}, {{0, 7, -7, 7}}, {{9, -10}}};
+    var v12 = 40;
+    print('-');
+    print('X');
+    while ((v12 < 3)) {
+        int v13 = 29;
+        while ((v13 < 2)) {
+            if ((6 != -5)) continue;
+            v13++;
+        }
+        assert(false);
+        v12++;
+    }
+    {
+        int v14 = 12;
+        v14 = -20;
+    }
+    v15 = method0();
+    return 4;
+}

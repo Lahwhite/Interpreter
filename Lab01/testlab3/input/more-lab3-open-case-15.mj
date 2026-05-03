@@ -1,0 +1,93 @@
+void method0(int p0, int p1) {
+    int[] v1 = new int[] {-4, -5, -4, 6, -8};
+    int v0 = -38;
+    v0 = 6;
+    print(length(new int[] {-5}));
+    v0--;
+    assert((v0 > p1));
+    v1 = new int[] {2, -9};
+}
+
+char[] method1(boolean[] p0, boolean[] p1) {
+    int v6;
+    int[] v4 = new int[] {6, -9, -8, 6};
+    if ((p0 == null)) {
+        print(new boolean[7]);
+        p1[0] = (p0 != null);
+    }
+    println((8 != -8));
+    {
+        int v2 = -44;
+        v2 = atoi("1332");
+        print(new char[] {'V', 'x', 'p', ',', '7'});
+    }
+    if ((-7 != -3)) {
+        char v3;
+        assert(false);
+        v3 = '^';
+        print(new int[] {-5, 8});
+    } else {
+        if ((6 == -10)) ; else if (p1[0]) {
+            v4 = new int[3];
+        } else {
+            int[][][] v5;
+            v5 = new int[][][] {{{0, -9}, {7, -10}}, {{-4, 4}, {5, 9, 6, 5}, {-9, 3, 3, -9}, {-7, -3, -9}}};
+        }
+        println('m');
+        {
+            p0[0] = (0 != 6);
+        }
+    }
+    v6 = 39;
+    return new char[10];
+}
+
+int main() {
+    for (int v7 = 0; v7 < 2; v7++) {
+        var v10 = 7;
+        int v8 = -21;
+        v8 = -26;
+        for (int v9 = 0; v9 < 3; v9++) ;
+        v10 = 13;
+    }
+    if (true) {
+        print('~');
+        if ((-2 >= 6)) {
+            int v13;
+            int v12;
+            boolean v11 = (-9 > 4);
+            v11 = (0 >= -4);
+            v12 = 25;
+            while ((v13 < 3)) {
+                char[] v14 = new char[3];
+                v14 = new char[7];
+                v13++;
+            }
+        } else ;
+        print('3');
+    } else {
+        int v16;
+        char[] v15;
+        v15 = new char[] {'m'};
+        v16 = 1;
+    }
+    if (true) ; else {
+        var v17 = -32;
+        while ((v17 < 2)) {
+            var v18 = 30;
+            while ((v18 < 5)) {
+                int[] v20 = new int[] {-8, -9};
+                boolean[] v19 = new boolean[] {false};
+                v19 = new boolean[] {true, true, false, true, true};
+                v20 = new int[] {0, -10};
+                v18++;
+            }
+            if ((-9 >= -8)) continue;
+            v17++;
+        }
+    }
+    print(new char[7]);
+    method0(-50, length(new int[9][]));
+    println(method1(new boolean[] {true}, new boolean[7]));
+    return -41;
+}

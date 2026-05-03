@@ -1,0 +1,68 @@
+int[] method0(int p0) {
+    var v7 = -13;
+    int[][][] v6 = new int[2][][];
+    int[][] v1;
+    int v0 = -15;
+    while ((v0 < 3)) {
+        int[][] v3 = {{-10, 5}};
+        print(itoa(-36));
+        v1 = new int[3][];
+        for (int v2 = 0; v2 < 5; v2++) {
+            v3 = new int[8][];
+        }
+        v0++;
+    }
+    if ((p0 != p0)) {
+        char v5;
+        int[][] v4;
+        if (false) {
+            v4 = new int[][] {{-1, -5, -4, 1}, {-6}, {0, -5}, {6, 3, 6}};
+            v5 = '[';
+            assert((p0 >= p0));
+        } else {
+            p0 = (p0 | -16);
+            --p0;
+        }
+        p0--;
+    }
+    v6 = new int[][][] {{{2, -1, 10}, {-8, 6, -3}}, {{-4, 1, 1}}, {{4, -4, -7}, {-4, 2}}};
+    print(length(new char[4]));
+    while ((v7 < 4)) {
+        v6[0] = new int[8][];
+        {
+            boolean v8;
+            print(new int[9]);
+            v8 = (p0 != p0);
+        }
+        --p0;
+        v7++;
+    }
+    return new int[] {-8, 9, 5, -10, 3};
+}
+
+char method1() {
+    int v10 = 12;
+    int[] v9;
+    v9 = new int[1];
+    while ((v10 < 5)) v10++;
+    {
+        v9[0] = 21;
+    }
+    return 'U';
+}
+
+int main() {
+    int v13;
+    char v11;
+    v11 += method1();
+    if (true) {
+        int v12 = (int) v11;
+        v12 ^= atoi("-8736");
+        print(new int[3]);
+        print((v12 < v11));
+    }
+    v13 = length(new boolean[] {false, false, false});
+    println(method0((int) v11));
+    println(method1());
+    return v13;
+}

@@ -1,0 +1,44 @@
+boolean[] method0(int[] p0, boolean p1) {
+    for (int v0 = 0; v0 < 5; v0++) ;
+    print(new boolean[1]);
+    {
+        int[][] v3 = new int[][] {{4, 2}, {9, 8, 1}, {-9, -10, -1}};
+        {
+            int[][][] v2;
+            var v1 = "bwL";
+            p0[0] = 12;
+            if (true) {
+                v1 += atoi("8787");
+                v2 = new int[6][][];
+            }
+            print('r');
+        }
+        println(new boolean[] {false});
+        v3 = new int[5][];
+    }
+    if ((9 < 8)) {
+        {
+            int v4 = -33;
+            print(length(new char[] {'8', 'B', 'k', 'c'}));
+            v4 = 24;
+        }
+        p0 = new int[10];
+    }
+    return new boolean[10];
+}
+
+int main() {
+    int[][][] v7 = new int[7][][];
+    var v5 = 50;
+    print(new char[3]);
+    while ((v5 < 2)) {
+        int v6;
+        v6 = 31;
+        v5++;
+    }
+    print(new boolean[8]);
+    v7 = new int[][][] {{{-5, 5, -6}, {-6, 6, 8}, {0}}};
+    print(new char[] {'n'});
+    println(method0(new int[8], (-8 == -10)));
+    return -7;
+}

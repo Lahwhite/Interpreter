@@ -1,0 +1,59 @@
+// ERROR: main_wrong_return_type
+char[] method0(int[][] p0, int p1) {
+    p1++;
+    p0[0] = new int[] {6, -2, 8, 6};
+    p0[0] = new int[] {3, 8, 7, 0, -6};
+    return new char[] {'A', ',', '(', 'l'};
+}
+
+char method1(char p0, boolean[] p1) {
+    var v0 = 36;
+    print(new char[8]);
+    v0 = -49;
+    print(new boolean[] {false});
+    p1[0] = true;
+    return p0;
+}
+
+void method2(char[] p0, int[][][] p1, boolean p2) {
+    int v1 = -21;
+    println((p2 != p2));
+    v1 &= length(new boolean[1]);
+}
+
+char main() {
+    int[][] v12;
+    {
+        int v6 = -8;
+        {
+            for (int v2 = 0; v2 < 5; v2++) {
+                int[] v5;
+                int[][][] v4 = new int[8][][];
+                char[] v3 = new char[8];
+                v3 = new char[] {'h', 'K', '8'};
+                v4 = new int[7][][];
+                v5 = new int[1];
+            }
+        }
+        while ((v6 < 4)) v6++;
+        if (true) {
+            int v7;
+            v7 = -42;
+            println(new boolean[] {true, false, false, false});
+        } else if ((-9 < -10)) {
+            boolean v11 = (-6 < 1);
+            int[][][] v8;
+            {
+                boolean[] v10 = new boolean[5];
+                var v9 = -7;
+                v8 = new int[4][][];
+                v9 = length("Rx:M");
+                v10 = new boolean[9];
+            }
+            v11 = (-9 > -3);
+            print(new boolean[10]);
+        }
+    }
+    v12 = new int[][] {{-6, -5, 10, 4}};
+    return 'F';
+}

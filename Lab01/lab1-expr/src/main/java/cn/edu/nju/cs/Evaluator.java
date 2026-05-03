@@ -72,7 +72,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     }
 
     private static void exitWith(int code) {
-        System.out.println("Process exits with " + code + ".");
+        System.out.print("Process exits with " + code + ".\n");
         System.exit(code);
     }
 
@@ -101,7 +101,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                 throw new RuntimeException("main must return int");
             }
             int code = (Integer) ret;
-            System.out.println("Process exits with " + code + ".");
+            System.out.print("Process exits with " + code + ".\n");
             System.exit(code);
             return null;
         } catch (RuntimeException e) {
@@ -228,6 +228,9 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                 value = visit(vd.variableInitializer());
             } finally {
                 expectedDeclType.pop();
+            }
+            if ("char".equals(fullType) && vd.variableInitializer().expression() != null) {
+                validateImplicitCharAssignment("char", "=", vd.variableInitializer().expression());
             }
             value = coerceValueToType(fullType, value);
         }
@@ -427,13 +430,13 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         for (MiniJavaParser.ExpressionContext e : argExprs) {
             argTypes.add(inferExprType(e, InferenceMode.ARGUMENT));
         }
-        CompiledMethod target = resolveOverload(name, argTypes);
+        CompiledMethod target = resolveOverload(name, argTypes, argExprs);
         List<Object> evalArgs = new ArrayList<>();
         for (MiniJavaParser.ExpressionContext e : argExprs) {
             evalArgs.add(visit(e));
         }
         for (int i = 0; i < evalArgs.size(); i++) {
-            evalArgs.set(i, coerceArgToParam(target.paramTypes.get(i), evalArgs.get(i)));
+            evalArgs.set(i, coerceArgToParam(target.paramTypes.get(i), evalArgs.get(i), argExprs.get(i)));
         }
         return invokeUserMethod(target, evalArgs);
     }
@@ -503,6 +506,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             MiniJavaParser.ExpressionContext lhs = ctx.expression(0);
             String declaredType = resolveLValueType(lhs);
             validateAssignmentOperatorForType(op, declaredType);
+            validateImplicitCharAssignment(declaredType, op, ctx.expression(1));
             Object coerced = coerceValueToType(declaredType, result);
             assignToLValue(lhs, coerced);
             return coerced;
@@ -600,10 +604,10 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             }
             case "println" -> {
                 if (args.isEmpty()) {
-                    System.out.println();
+                    System.out.print("\n");
                 } else if (args.size() == 1) {
                     printArg(visit(args.get(0)));
-                    System.out.println();
+                    System.out.print("\n");
                 } else {
                     throw new RuntimeException("println arity");
                 }
@@ -754,7 +758,8 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     // overload & invocation
     // -------------------------------------------------------------------------
 
-    private CompiledMethod resolveOverload(String name, List<String> argTypes) {
+    private CompiledMethod resolveOverload(String name, List<String> argTypes,
+            List<MiniJavaParser.ExpressionContext> argExprs) {
         List<CompiledMethod> cands = methods.get(name);
         if (cands == null || cands.isEmpty()) {
             throw new RuntimeException("No method: " + name);
@@ -768,7 +773,9 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             int sum = 0;
             boolean bad = false;
             for (int i = 0; i < argTypes.size(); i++) {
-                int c = conversionCost(m.paramTypes.get(i), argTypes.get(i));
+                MiniJavaParser.ExpressionContext ex =
+                        argExprs != null && i < argExprs.size() ? argExprs.get(i) : null;
+                int c = conversionCost(m.paramTypes.get(i), argTypes.get(i), ex);
                 if (c < 0) {
                     bad = true;
                     break;
@@ -799,12 +806,18 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     /**
      * 返回值：每个参数隐式转换次数之和；不兼容返回 -1。
      */
-    private static int conversionCost(String paramType, String argType) {
+    private static int conversionCost(String paramType, String argType, MiniJavaParser.ExpressionContext argExpr) {
         if (paramType.equals(argType)) {
             return 0;
         }
         if ("int".equals(paramType) && "char".equals(argType)) {
             return 1;
+        }
+        if ("char".equals(paramType) && "int".equals(argType)) {
+            if (argExpr != null && narrowingLiteralIntForChar(argExpr)) {
+                return 1;
+            }
+            return -1;
         }
         if (paramType.endsWith("[]") && NULL_T.equals(argType)) {
             return 1;
@@ -878,7 +891,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         throw new RuntimeException("bad return");
     }
 
-    private Object coerceArgToParam(String paramType, Object value) {
+    private Object coerceArgToParam(String paramType, Object value, MiniJavaParser.ExpressionContext argExpr) {
         if ("int".equals(paramType)) {
             if (value instanceof Integer) {
                 return value;
@@ -891,6 +904,9 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         if ("char".equals(paramType)) {
             if (value instanceof Character) {
                 return value;
+            }
+            if (value instanceof Integer && argExpr != null && narrowingLiteralIntForChar(argExpr)) {
+                return (char) (((Integer) value) & 0xFF);
             }
             throw new RuntimeException("arg to char");
         }
@@ -926,11 +942,12 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
     }
 
     /**
-     * char[] 字面量中 visit 得到 Integer 时：仅允许十进制字面量经一元 {@code +}、括号或一元 {@code -}
-     * 作用于字面量（最终值在 byte 范围内）；禁止一般 int 表达式与显式强转形式（如 {@code (int)5}）。
-     * {@code (char)} 等强转在运行期得到 Character，不经过此检查。与 TE / SpecialCase 一致。
+     * 在需要 {@code char} 的上下文中，由 {@code int} 字面量窄化而来时允许的 AST 形态：
+     * 十进制字面量、括号、一元 {@code +}、一元 {@code -} 作用于字面量（最终值在 -128～127）；
+     * 禁止一般 int 表达式与 {@code (int)} 等强转字面量形态。{@code (char)} 强转推断为 {@code char}，不走此判定。
+     * 用于 {@code char[]} 初始化元素、{@code char} 的 {@code =} 赋值、以及 {@code char} 形参的实参匹配。
      */
-    private static boolean allowedCharArrayInitializerElementExpression(MiniJavaParser.ExpressionContext ctx) {
+    private static boolean narrowingLiteralIntForChar(MiniJavaParser.ExpressionContext ctx) {
         MiniJavaParser.ExpressionContext e = unwrapParenExpression(ctx);
         if (e == null) {
             return false;
@@ -938,7 +955,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         if (e.prefix != null && e.expression(0) != null) {
             String op = e.prefix.getText();
             if ("+".equals(op)) {
-                return allowedCharArrayInitializerElementExpression(e.expression(0));
+                return narrowingLiteralIntForChar(e.expression(0));
             }
             if ("-".equals(op)) {
                 MiniJavaParser.ExpressionContext inner = unwrapParenExpression(e.expression(0));
@@ -966,6 +983,27 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
             return v >= -128 && v <= 127;
         }
         return false;
+    }
+
+    /**
+     * {@code char} 目标的简单赋值 {@code =}：禁止 int 变量/表达式隐式变 char；允许字面量窄化与 RHS 推断为 {@code char}（含 {@code (char)}）。
+     * {@code +=} 等复合赋值不调用（允许按 int 演算后再截断存入 char）。
+     */
+    private void validateImplicitCharAssignment(String targetType, String assignOp, MiniJavaParser.ExpressionContext rhs) {
+        if (!"char".equals(targetType) || !"=".equals(assignOp)) {
+            return;
+        }
+        String rhsT = inferExprType(rhs, InferenceMode.GENERAL);
+        if ("char".equals(rhsT)) {
+            return;
+        }
+        if (NULL_T.equals(rhsT)) {
+            throw new RuntimeException("null to char");
+        }
+        if ("int".equals(rhsT) && narrowingLiteralIntForChar(rhs)) {
+            return;
+        }
+        throw new RuntimeException("implicit int to char");
     }
 
     private static MiniJavaParser.ExpressionContext unwrapParenExpression(MiniJavaParser.ExpressionContext ctx) {
@@ -1114,7 +1152,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
                 }
                 MiniJavaParser.ExpressionContext ex = vi.expression();
                 Object v = visit(ex);
-                if (v instanceof Integer && !allowedCharArrayInitializerElementExpression(ex)) {
+                if (v instanceof Integer && !narrowingLiteralIntForChar(ex)) {
                     throw new RuntimeException("int cannot implicitly convert to char in array init");
                 }
                 out[i] = (Character) coerceValueToType("char", v);
@@ -1442,7 +1480,7 @@ public class Evaluator extends MiniJavaParserBaseVisitor<Object> {
         for (MiniJavaParser.ExpressionContext e : argExprs) {
             argTypes.add(inferExprType(e, InferenceMode.ARGUMENT));
         }
-        CompiledMethod m = resolveOverload(name, argTypes);
+        CompiledMethod m = resolveOverload(name, argTypes, argExprs);
         return m.returnType;
     }
 

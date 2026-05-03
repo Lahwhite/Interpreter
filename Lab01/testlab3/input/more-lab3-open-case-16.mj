@@ -1,0 +1,50 @@
+// ERROR: void_return_value
+void method0(int p0, char p1) {
+    if ((p1 < p0)) {
+        char[] v0 = {'|', 'M'};
+        v0 = new char[] {'M', 'w', 'h'};
+    } else {
+        int v1;
+        while ((v1 < 4)) v1++;
+        print(new boolean[] {false, false, false, true, false});
+    }
+    p1 = p1;
+    return (p0 * p0);
+}
+
+boolean method1(int[] p0) {
+    var v3 = 39;
+    int[] v2 = {9, -8};
+    p0[0] = 13;
+    v2 = new int[5];
+    v3 = -42;
+    print(itoa(p0[0]));
+    return (v2 == null);
+}
+
+void method2(int p0, boolean p1) {
+    boolean[] v5 = new boolean[10];
+    {
+        int v4;
+        while ((v4 < 4)) {
+            assert(((p0 > p0) and p1));
+            v4++;
+        }
+        v5 = new boolean[] {false, false, true, true, true};
+    }
+    print(new boolean[5]);
+}
+
+int main() {
+    var v7 = -50;
+    var v6 = '1';
+    v6 = 'D';
+    while ((v7 < 4)) {
+        print(new boolean[] {false, true});
+        v7++;
+    }
+    method0((int) v6, v6);
+    println(method1(new int[3]));
+    method2(27, method1(new int[] {8, 8, -7}));
+    return 15;
+}
